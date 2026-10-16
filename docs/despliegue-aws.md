@@ -137,19 +137,19 @@ sudo systemctl status botnet-c2
 Ajustar `User` y `WorkingDirectory` en la unidad si el usuario o la ruta del
 repositorio difieren de `ubuntu` y `/home/ubuntu/botnet`.
 
-Administrar la consola del C2 (la misma del laboratorio); para salir sin detenerlo:
-`Ctrl+B`, luego `D`:
+### Operar la consola del C2
 
 ```bash
-tmux attach -t botnet-c2
+tmux attach -t botnet-c2      # entrar a la consola del C2
 ```
 
-Detener o reiniciar:
-
-```bash
-sudo systemctl stop botnet-c2
-sudo systemctl restart botnet-c2
-```
+- **Salir sin detener el C2:** `Ctrl+B`, soltar, luego `D` (detach). Puedes
+  cerrar PuTTY: el C2 sigue corriendo.
+- **`exit` dentro de la consola:** no apaga el C2; el bucle de persistencia del
+  servicio lo reinicia a los 3 s.
+- **Apagado real:** `sudo systemctl stop botnet-c2`.
+- **Reiniciar (por ejemplo, tras editar `.env`):** `sudo systemctl restart botnet-c2`.
+- **Estado:** `sudo systemctl status botnet-c2`.
 
 ## Notas de costo
 
