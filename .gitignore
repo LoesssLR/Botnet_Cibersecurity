@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Empaquetado (PyInstaller)
+build/
+dist/
+*.exe
+*.spec
+
+# Secretos y credenciales
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.ppk
+.aws/
+
+# Datos y registros del laboratorio
+logs/
+*.log
+data/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# IDE / sistema operativo
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,106 @@
+================================================================================
+                         UNIVERSIDAD TÉCNICA NACIONAL
+                   Ingeniería en Tecnologías de Información
+                       Seguridad de TI II (Investigación)
+================================================================================
+
+ENCABEZADO Y DATOS GENERALES
+
+- Institución: Universidad Técnica Nacional (Ingeniería en Tecnologías de Información).
+- Curso: Seguridad de TI II (Investigación).
+- Docente: M.Sc. Roberto Escobar Agüero.
+- Fecha de Exposición: 11/11/2026.
+- Puntuación Total: 40 Pts.
+- Valor Porcentual: 20%.
+
+--------------------------------------------------------------------------------
+
+INSTRUCCIONES GENERALES
+
+--------------------------------------------------------------------------------
+
+1. Lea cuidadosamente las instrucciones.
+2. Trabaje en parejas.
+
+--------------------------------------------------------------------------------
+
+I PARTE. PARTE PRÁCTICA (VALOR 40 PTS)
+
+--------------------------------------------------------------------------------
+
+Lea detenidamente las indicaciones y resuelva lo que se solicita a continuación.
+Los estudiantes deben desarrollar una investigación práctica sobre un sistema
+cliente-servidor de administración remota en un entorno controlado y autorizado
+(botnet). El servidor botnet se ejecutará en Ubuntu Server sobre Amazon AWS y
+recibirá conexiones inversas de múltiples agentes (host zombies) instalados en
+equipos de prueba.
+
+El sistema botnet debe permitir recibir y administrar múltiples conexiones
+concurrentes, enviar instrucciones desde el servidor botnet, realizar ataques
+controlados contra un servidor víctima y recopilar métricas y resultados del
+objetivo. Los estudiantes deberán demostrar el funcionamiento del sistema durante
+la exposición y proporcionar el troyano para realizar las pruebas desde los
+equipos de la Universidad. Para monitorear el servidor víctima podrán utilizar
+Netdata o herramientas similares.
+
+1. Los estudiantes deben implementar el servidor botnet mediante un menú de
+   consola que permita administrar las conexiones activas, ordenar a los hosts
+   zombie realizar una inundación de solicitudes contra el servidor víctima y
+   registrar las métricas obtenidas en el objetivo (20 pts).
+
+2. Los estudiantes deben disponer un servidor víctima con alguna herramienta
+   para medir el rendimiento y visualizar su comportamiento durante los
+   ataques (10 pts).
+
+3. Los estudiantes deben crear un troyano real y completo que instale un
+   software legítimo (7-zip) sin requerir configuraciones adicionales por parte
+   del usuario y, simultáneamente, convierta el equipo en un host zombie funcional
+   a la espera de instrucciones del servidor botnet. Deberán realizar pruebas
+   previas en las computadoras y la red de la Universidad para garantizar su
+   funcionamiento durante la exposición (10 pts).
+
+--------------------------------------------------------------------------------
+
+DIAGRAMA: SIMULACIÓN DE BOTNET EN ENTORNO CONTROLADO
+(Arquitectura general de la práctica)
+
+--------------------------------------------------------------------------------
+
+- Entorno en AWS:
+  * Incluye dos instancias con Ubuntu Server:
+    - Servidor víctima.
+    - Servidor botnet.
+
+- Nodos externos:
+  * Conformados por el Atacante y múltiples equipos Host zombie que integran
+    la Botnet.
+
+- Flujos de conexión:
+  * Acceso de comando y control (flecha verde):
+    Va desde el Atacante hacia el Servidor botnet en AWS.
+  * Conexión inversa / administración remota (flechas azules):
+    Conecta a cada Host zombie con el Servidor botnet.
+  * Tráfico de ataque controlado (flechas rojas):
+    Se dirige desde los equipos Host zombie hacia el Servidor víctima en AWS.
+
+--------------------------------------------------------------------------------
+
+CONSIDERACIONES - NOTAS ADICIONALES
+
+Debe ser un troyano que instale 7zip, debe estar lo más oculto posible (.exe, con la imagen del programa, y con la menor cantidad de ventanas o permisos o ejecuciones posibles por parte del usuario)
+Se los paso a los compañeros, ellos lo ejecutan y solo con eso se deben conectar al server de AWS de la botnet.
+
+Desde el server de la botnet se debe poder ver cuantos zombies hay y los que van llegando.
+Como atacante se le indica el ataque que debe hacer, los zombies que están dentro de la botnet atacan al server victima.
+Para que no hayan complicaciones, se utiliza NetData, que se vea como el server victima se estresa por las solicitudes.
+
+Server Botnet
+- IP elástica
+- 4GB de RAM y 2 procesadores
+
+Server Víctima
+- IP elástica
+- Micro o Nano
+- NetData
+
+================================================================================

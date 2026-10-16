@@ -1,0 +1,51 @@
+"""Configuracion del servidor C2 (variables de entorno y archivo .env)."""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_HOST = "0.0.0.0"
+DEFAULT_PORT = 8443
+
+
+def load_env_file(path: Path) -> None:
+    if not path.is_file():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+@dataclass
+class Config:
+    bind_host: str
+    port: int
+    shared_secret: str
+    netdata_url: str
+    log_dir: Path
+    data_dir: Path
+
+    @classmethod
+    def load(cls) -> "Config":
+        load_env_file(PROJECT_ROOT / ".env")
+        log_dir = Path(os.environ.get("LOG_DIR", "logs"))
+        data_dir = Path(os.environ.get("DATA_DIR", "data"))
+        if not log_dir.is_absolute():
+            log_dir = PROJECT_ROOT / log_dir
+        if not data_dir.is_absolute():
+            data_dir = PROJECT_ROOT / data_dir
+        return cls(
+            bind_host=os.environ.get("C2_BIND_HOST", DEFAULT_HOST),
+            port=int(os.environ.get("C2_PORT", DEFAULT_PORT)),
+            shared_secret=os.environ.get("C2_SHARED_SECRET", ""),
+            netdata_url=os.environ.get("NETDATA_URL", ""),
+            log_dir=log_dir,
+            data_dir=data_dir,
+        )

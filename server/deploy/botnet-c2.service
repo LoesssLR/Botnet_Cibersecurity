@@ -1,0 +1,15 @@
+[Unit]
+Description=Servidor C2 del laboratorio (Seguridad de TI II, UTN)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=ubuntu
+WorkingDirectory=/home/ubuntu/botnet
+ExecStart=/usr/bin/tmux new-session -d -s botnet-c2 'while true; do /usr/bin/python3 server/main.py; sleep 3; done'
+ExecStop=/usr/bin/tmux kill-session -t botnet-c2
+
+[Install]
+WantedBy=multi-user.target
