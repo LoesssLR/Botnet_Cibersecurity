@@ -4,6 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+# Ajustar User y WorkingDirectory si el repositorio no esta en /home/ubuntu/botnet
 Type=oneshot
 RemainAfterExit=yes
 User=ubuntu

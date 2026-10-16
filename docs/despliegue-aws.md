@@ -34,7 +34,8 @@ Crear dos grupos de seguridad en la VPC por defecto.
 2. Nombre: `botnet-c2`. AMI: Ubuntu Server 24.04 LTS (64-bit x86).
 3. Tipo: `t3.medium` (2 vCPU / 4 GB, según el enunciado).
 4. Key pair: el creado. Almacenamiento: 20 GB gp3.
-5. Security group: `sg-botnet`.
+5. Security group: `sg-botnet` (solo los puertos de la sección 1; en el asistente
+   **no marque** "Allow HTTP" ni "Allow HTTPS": este servidor no los usa).
 6. Lanzar y esperar el estado `running`.
 
 ## 3. IP elástica del botnet
@@ -53,6 +54,16 @@ Crear dos grupos de seguridad en la VPC por defecto.
 5. Lanzar, asignar una segunda IP elástica y anotarla (`TARGET_HOST`).
 
 ## 5. Configuración base (ambas instancias)
+
+### Acceso por SSH con PuTTY (Windows)
+
+1. Abrir **PuTTYgen** → `Load` → seleccionar el `.pem` (cambiar el filtro a
+   "All Files (*.*)") → `Save private key` → guardar como `botnet-c2-key.ppk`.
+2. Abrir **PuTTY** → Host Name: `ubuntu@<IP_PUBLICA>` (usuario `ubuntu`),
+   puerto `22`.
+3. Connection → SSH → Auth → Credentials → cargar el archivo `.ppk`.
+4. `Open`, aceptar la huella del servidor la primera vez y guardar la sesión con
+   un nombre (por ejemplo `botnet-c2`) para reutilizarla.
 
 ```bash
 sudo apt update && sudo apt upgrade -y
