@@ -26,7 +26,7 @@ Crear dos grupos de seguridad en la VPC por defecto.
 |---|---|---|---|
 | SSH | 22 | IP del equipo | Administración |
 | HTTP | 80 | 0.0.0.0/0 | Tráfico de ataque controlado |
-| TCP personalizado | 19999 | IP del equipo (o túnel SSH) | Netdata |
+| TCP personalizado | 19999 | sg-botnet (misma cuenta/VPC) o la IP pública del botnet | API de Netdata para el C2 |
 
 ## 2. Instancia del servidor botnet
 
@@ -52,6 +52,10 @@ Crear dos grupos de seguridad en la VPC por defecto.
 3. Tipo: `t3.micro`.
 4. Security group: `sg-victima`.
 5. Lanzar, asignar una segunda IP elástica y anotarla (`TARGET_HOST`).
+6. Anotar también su **IP privada** (`172.31.x.x`): se usa para que el C2
+   consulte Netdata sin exponer el puerto a Internet.
+7. Servicio web objetivo de la inundación (`load` apunta a `http://<IP_VICTIMA>`):
+   `sudo apt install -y nginx` y verificar con `curl http://<IP_VICTIMA>`.
 
 ## 5. Configuración base (ambas instancias)
 
@@ -102,15 +106,36 @@ ssh -L 19999:localhost:19999 ubuntu@<IP_VICTIMA>
 # Luego abrir http://localhost:19999 en el navegador
 ```
 
-Para que el C2 consuma métricas vía API, exponer el 19999 solo a la IP del botnet,
-o consumir la API localmente desde la víctima.
+Para que el C2 consuma métricas vía API hay dos rutas:
+
+- **Misma cuenta/VPC (recomendado):** el C2 usa la **IP privada** de la víctima
+  (`NETDATA_URL=http://172.31.x.x:19999`) y `sg-victima` limita el puerto 19999
+  a `sg-botnet`. Netdata acepta rangos privados por defecto.
+- **Cuentas distintas (cada uno su instancia):** el C2 entra por la **IP elástica**
+  de la víctima. Pasos:
+  1. En `sg-victima`: puerto 19999 con origen `<IP_ELASTICA_BOTNET>/32`.
+  2. En la víctima: `sudo /etc/netdata/edit-config netdata.conf` y agregar en la
+     sección `[web]` la IP del botnet:
+     `allow connections from = localhost 172.31.* <IP_ELASTICA_BOTNET>`
+  3. `sudo systemctl restart netdata`.
+  4. Desde el C2 verificar:
+     `curl -s 'http://<IP_ELASTICA_VICTIMA>:19999/api/v1/info' | head -c 200`
+     (debe devolver JSON, no 403).
+
+Verificación desde el propio C2 antes de la demo:
+
+```bash
+curl -s 'http://<IP_PRIVADA_VICTIMA>:19999/api/v1/info' | head -c 200
+```
 
 ## 7. Desplegar el servidor C2 en la instancia
 
 1. Conectarse por SSH y verificar Python: `python3 --version` (Ubuntu 24.04 incluye 3.12).
 2. Subir el repositorio (`git clone` o `scp -r botnet ubuntu@<IP_BOTNET>:~`).
 3. `cp .env.example .env` y completar:
-   - `NETDATA_URL=http://<IP_ELASTICA_VICTIMA>:19999`
+   - `NETDATA_URL=http://<IP_PRIVADA_VICTIMA>:19999` si la víctima está en el
+     mismo VPC, o `http://<IP_ELASTICA_VICTIMA>:19999` si está en otra cuenta
+     (ver sección 6).
    - `C2_SHARED_SECRET` (opcional; si se define, el agente/`.exe` debe enviar el mismo valor).
 4. Ejecutar para una prueba rápida: `python3 server/main.py` (el puerto 8443 ya está
    habilitado en `sg-botnet`). Para dejarlo persistente, instalar el servicio de la

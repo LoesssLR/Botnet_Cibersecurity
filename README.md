@@ -326,7 +326,8 @@ Resumen (guía completa en [`docs/despliegue-aws.md`](docs/despliegue-aws.md)):
    abierto, IP elástica (dirección fija que llevará el `.exe`).
 2. EC2 `victima`: Ubuntu Server 24.04, `t3.micro`, Netdata instalado, IP elástica.
 3. En el botnet: subir el repositorio, `cp .env.example .env` y configurar
-   `NETDATA_URL=http://<IP_ELASTICA_VICTIMA>:19999`.
+   `NETDATA_URL=http://<IP_PRIVADA_VICTIMA>:19999` (misma cuenta/VPC; si está en
+   otra cuenta, la IP elástica con el acceso autorizado en Netdata).
 4. Instalar el servicio persistente: `sudo apt install -y tmux`, copiar
    `server/deploy/botnet-c2.service` a `/etc/systemd/system/`,
    `sudo systemctl enable --now botnet-c2`; la consola se administra con
