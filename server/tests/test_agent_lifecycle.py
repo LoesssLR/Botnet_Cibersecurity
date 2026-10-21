@@ -23,6 +23,7 @@ def encode(message: dict) -> bytes:
 class AgentLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_stop_cancela_load_y_responde_ping(self):
         sink_connected = asyncio.Event()
+        stop_received = asyncio.Event()
         sink_tasks: list[asyncio.Task] = []
         c2_tasks: list[asyncio.Task] = []
         result: dict = {}
@@ -75,6 +76,7 @@ class AgentLifecycleTests(unittest.IsolatedAsyncioTestCase):
                     message = json.loads(line.decode("utf-8"))
                     if message.get("id") == "stop-1":
                         result["stop"] = message
+                        stop_received.set()
                         break
             finally:
                 writer.close()
@@ -91,6 +93,7 @@ class AgentLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 )
             self.assertEqual(code, 0)
             self.assertEqual(result.get("ping", {}).get("data", {}).get("pong"), True)
+            await asyncio.wait_for(stop_received.wait(), timeout=2.0)
             self.assertEqual(result.get("stop", {}).get("status"), "ok")
         finally:
             c2_server.close()
