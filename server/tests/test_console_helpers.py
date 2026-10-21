@@ -7,7 +7,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from c2.console import REQUEST_TIMEOUT, _as_int, _command_timeout, _fit, _fmt_duration, _parse_command
+from c2.console import (
+    REQUEST_TIMEOUT,
+    _as_int,
+    _command_timeout,
+    _fit,
+    _fmt_duration,
+    _parse_command,
+    _redact_url,
+)
 
 
 class FitTests(unittest.TestCase):
@@ -67,3 +75,26 @@ class ParseCommandTests(unittest.TestCase):
         name, args = _parse_command(["echo", "hola", "mundo"])
         self.assertEqual(name, "echo")
         self.assertEqual(args, {"text": "hola mundo"})
+
+
+class RedactUrlTests(unittest.TestCase):
+    def test_url_sin_credenciales_no_cambia(self):
+        self.assertEqual(
+            _redact_url("http://10.0.0.9:19999/api/v1/data?chart=system.cpu"),
+            "http://10.0.0.9:19999/api/v1/data?chart=system.cpu",
+        )
+
+    def test_elimina_usuario_y_clave(self):
+        self.assertEqual(_redact_url("http://netdata:secreto123@10.0.0.9:19999"), "http://10.0.0.9:19999")
+
+    def test_elimina_solo_usuario(self):
+        self.assertEqual(_redact_url("http://operador@10.0.0.9:19999"), "http://10.0.0.9:19999")
+
+    def test_conserva_ruta_y_query(self):
+        self.assertEqual(
+            _redact_url("http://u:p@10.0.0.9:19999/api/v1/data?chart=system.cpu"),
+            "http://10.0.0.9:19999/api/v1/data?chart=system.cpu",
+        )
+
+    def test_url_invalida_se_devuelve_tal_cual(self):
+        self.assertEqual(_redact_url("no-es-una-url"), "no-es-una-url")

@@ -10,17 +10,45 @@ DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8443
 
 
+def _parse_value(raw_value: str) -> str:
+    """Limpia un valor de .env: comentario inline y comillas envolventes.
+
+    Un '#' inicia un comentario solo si esta fuera de comillas y al comienzo del
+    valor o precedido por un espacio. Asi no se truncan secretos que lo
+    contengan sin espacios (por ejemplo, 'abc#123').
+    """
+    quote = ""
+    for index, character in enumerate(raw_value):
+        if quote:
+            if character == quote:
+                quote = ""
+        elif character in ("'", '"'):
+            quote = character
+        elif character == "#" and (index == 0 or raw_value[index - 1].isspace()):
+            raw_value = raw_value[:index]
+            break
+    value = raw_value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        value = value[1:-1]
+    return value
+
+
 def load_env_file(path: Path) -> None:
     if not path.is_file():
         return
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export ") or line.startswith("export\t"):
+            line = line[len("export "):].lstrip()
+        if "=" not in line:
             continue
         key, _, value = line.partition("=")
         key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        os.environ.setdefault(key, value)
+        if not key:
+            continue
+        os.environ.setdefault(key, _parse_value(value))
 
 
 @dataclass

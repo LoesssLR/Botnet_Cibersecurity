@@ -67,6 +67,22 @@ def _positive_int(value, default: int, maximum: int, field: str) -> int:
     return min(number, maximum)
 
 
+def _redact_url(url: str) -> str:
+    """Devuelve la URL sin credenciales (user:pass@) para mostrarla en logs y consola."""
+    try:
+        parts = urlsplit(url)
+        hostname = parts.hostname or ""
+        port = parts.port
+    except ValueError:
+        return url
+    if not parts.username and not parts.password:
+        return url
+    netloc = f"[{hostname}]" if ":" in hostname else hostname
+    if port is not None:
+        netloc = f"{netloc}:{port}"
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
 def _normalize_target(value, config: Config) -> str:
     target = str(value).strip()
     if not target:
@@ -437,7 +453,7 @@ class Console:
             return False
         reachable = await asyncio.to_thread(is_netdata_reachable, self.config.netdata_url)
         if not reachable:
-            message = f"[metricas:{label}] Netdata no responde en {self.config.netdata_url}"
+            message = f"[metricas:{label}] Netdata no responde en {_redact_url(self.config.netdata_url)}"
             print(message)
             log.warning(message)
             return False

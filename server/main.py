@@ -10,6 +10,8 @@ from c2.config import Config
 from c2.console import Console
 from c2.manager import AgentManager
 
+log = logging.getLogger("c2.main")
+
 
 def setup_logging(log_dir) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -29,6 +31,16 @@ async def run(args: argparse.Namespace) -> None:
     if args.secret is not None:
         config.shared_secret = args.secret
     setup_logging(config.log_dir)
+    if args.secret is not None:
+        message = (
+            "[!] advertencia: el secreto se paso por --secret y es visible en la lista "
+            "de procesos; preferir la variable de entorno C2_SHARED_SECRET"
+        )
+        print(message, flush=True)
+        log.warning(
+            "secreto recibido por --secret (visible en la lista de procesos); "
+            "preferir la variable de entorno C2_SHARED_SECRET"
+        )
     config.data_dir.mkdir(parents=True, exist_ok=True)
 
     manager = AgentManager(config.bind_host, config.port, config.shared_secret)

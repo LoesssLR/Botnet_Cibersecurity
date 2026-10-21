@@ -268,7 +268,7 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8443)
     parser.add_argument("--id", dest="agent_id", default=f"zombie-{socket.gethostname().lower()[:12]}")
-    parser.add_argument("--secret", default=os.environ.get("C2_SHARED_SECRET", ""))
+    parser.add_argument("--secret", help="secreto compartido (default: C2_SHARED_SECRET)")
     parser.add_argument(
         "--reconnect",
         type=float,
@@ -277,12 +277,18 @@ def main() -> int:
         help="reintentar la conexion cada N segundos si el C2 no esta disponible (0 = salir)",
     )
     args = parser.parse_args()
+    secret = args.secret if args.secret is not None else os.environ.get("C2_SHARED_SECRET", "")
+    if args.secret is not None:
+        print(
+            "[test-agent] advertencia: --secret es visible en la lista de procesos; "
+            "preferir la variable de entorno C2_SHARED_SECRET"
+        )
     initial_delay = max(1.0, args.reconnect) if args.reconnect > 0 else 0.0
     delay = initial_delay
     try:
         while True:
             try:
-                code = asyncio.run(run(args.host, args.port, args.agent_id, args.secret))
+                code = asyncio.run(run(args.host, args.port, args.agent_id, secret))
             except KeyboardInterrupt:
                 return 0
             except Exception as exc:

@@ -83,6 +83,9 @@ class AgentManager:
         self.port = self._server.sockets[0].getsockname()[1]
         log.info("escuchando en %s:%s", self.bind_host, self.port)
         self._emit(f"servidor escuchando en {self.bind_host}:{self.port}")
+        if not self.shared_secret:
+            log.warning("C2_SHARED_SECRET vacio: la autenticacion esta deshabilitada, cualquier agente puede registrarse")
+            self._emit("[!] C2_SHARED_SECRET vacio: la autenticacion esta deshabilitada (solo para laboratorio)")
 
     async def stop(self) -> None:
         if self._server is not None:
