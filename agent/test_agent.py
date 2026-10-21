@@ -75,10 +75,15 @@ def handle_command(message: dict) -> dict:
     }
 
 
-def _build_request(host: str, path: str) -> bytes:
+def _host_header(host: str, port: int) -> str:
+    display = f"[{host}]" if ":" in host else host
+    return display if port == 80 else f"{display}:{port}"
+
+
+def _build_request(host: str, path: str, port: int = 80) -> bytes:
     return (
         f"GET {path} HTTP/1.1\r\n"
-        f"Host: {host}\r\n"
+        f"Host: {_host_header(host, port)}\r\n"
         "User-Agent: carga-laboratorio-UTN/0.2\r\n"
         "Accept: */*\r\n"
         "Connection: close\r\n"
@@ -121,7 +126,7 @@ async def run_load(target: str, duration: int, concurrency: int) -> dict:
     host, port, path = parse_target(target)
     duration = max(1, min(int(duration), MAX_DURATION_S))
     concurrency = max(1, min(int(concurrency), MAX_CONCURRENCY))
-    request = _build_request(host, path)
+    request = _build_request(host, path, port)
     deadline = time.monotonic() + duration
     stats = {"sent": 0, "errors": 0}
     workers = [
@@ -154,44 +159,108 @@ async def _handle_load(message: dict) -> dict:
 
 async def run(host: str, port: int, agent_id: str, secret: str) -> int:
     try:
-        reader, writer = await asyncio.open_connection(host, port)
-    except OSError as exc:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
+            timeout=CONNECT_TIMEOUT,
+        )
+    except (OSError, asyncio.TimeoutError) as exc:
         print(f"[test-agent] no se pudo conectar a {host}:{port}: {exc}")
         return 1
-    writer.write(encode(build_hello(agent_id, secret)))
-    await writer.drain()
-    print(f"[test-agent] conectado como {agent_id} en {host}:{port}")
+    write_lock = asyncio.Lock()
+
+    async def send_message(message: dict) -> None:
+        async with write_lock:
+            writer.write(encode(message))
+            await asyncio.wait_for(writer.drain(), timeout=CONNECT_TIMEOUT)
+
+    load_task: asyncio.Task | None = None
+
+    async def stop_load() -> None:
+        nonlocal load_task
+        if load_task is not None and not load_task.done():
+            load_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await load_task
+        load_task = None
+
+    async def run_load_command(message: dict) -> None:
+        try:
+            reply = await _handle_load(message)
+        except asyncio.CancelledError:
+            print("[test-agent] carga cancelada")
+            raise
+        except Exception as exc:
+            reply = {
+                "type": "result",
+                "id": message.get("id"),
+                "status": "error",
+                "data": {"error": str(exc)},
+            }
+        with contextlib.suppress(Exception):
+            await send_message(reply)
+
     try:
+        await send_message(build_hello(agent_id, secret))
+        print(f"[test-agent] conectado como {agent_id} en {host}:{port}")
         while True:
             try:
                 line = await asyncio.wait_for(reader.readline(), timeout=HEARTBEAT_SECONDS)
             except asyncio.TimeoutError:
-                writer.write(encode({"type": "heartbeat", "ts": time.time()}))
-                await writer.drain()
+                await send_message({"type": "heartbeat", "ts": time.time()})
                 continue
             if not line:
                 print("[test-agent] el servidor cerro la conexion")
                 return 2
             message = json.loads(line.decode("utf-8"))
-            if message.get("type") != "command":
+            if not isinstance(message, dict):
+                print("[test-agent] mensaje invalido del servidor")
+                return 1
+            message_type = message.get("type")
+            if message_type == "bye":
+                print(f"[test-agent] expulsado por el servidor: {message.get('reason', '')}")
+                return 0
+            if message_type == "error":
+                code = message.get("code")
+                if code in ("auth", "kicked"):
+                    print(f"[test-agent] rechazado por el servidor: {message.get('error', code)}")
+                    return 0
+                if code == "busy":
+                    print("[test-agent] servidor ocupado; se reintentara con espera")
+                    return 1
+                continue
+            if message_type != "command":
                 continue
             name = message.get("name")
             print(f"[test-agent] comando recibido: {name}")
             if name == "stop":
-                writer.write(
-                    encode({"type": "result", "id": message.get("id"), "status": "ok", "data": {"stopping": True}})
+                await stop_load()
+                await send_message(
+                    {"type": "result", "id": message.get("id"), "status": "ok", "data": {"stopping": True}}
                 )
-                await writer.drain()
                 print("[test-agent] detenido por el servidor")
                 return 0
             if name == "load":
-                reply = await _handle_load(message)
-            else:
-                reply = handle_command(message)
-            writer.write(encode(reply))
-            await writer.drain()
+                if load_task is not None and not load_task.done():
+                    await send_message(
+                        {
+                            "type": "result",
+                            "id": message.get("id"),
+                            "status": "error",
+                            "data": {"error": "carga ya en curso"},
+                        }
+                    )
+                else:
+                    load_task = asyncio.create_task(run_load_command(message))
+                continue
+            await send_message(handle_command(message))
+    except Exception as exc:
+        print(f"[test-agent] error de conexion/protocolo: {exc}")
+        return 1
     finally:
+        await stop_load()
         writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
 
 
 def main() -> int:
@@ -208,15 +277,28 @@ def main() -> int:
         help="reintentar la conexion cada N segundos si el C2 no esta disponible (0 = salir)",
     )
     args = parser.parse_args()
-    while True:
-        try:
-            code = asyncio.run(run(args.host, args.port, args.agent_id, args.secret))
-        except KeyboardInterrupt:
-            return 0
-        if not should_reconnect(code, args.reconnect):
-            return code
-        print(f"[test-agent] reconectando en {args.reconnect:.0f}s (Ctrl+C para salir)")
-        time.sleep(args.reconnect)
+    initial_delay = max(1.0, args.reconnect) if args.reconnect > 0 else 0.0
+    delay = initial_delay
+    try:
+        while True:
+            try:
+                code = asyncio.run(run(args.host, args.port, args.agent_id, args.secret))
+            except KeyboardInterrupt:
+                return 0
+            except Exception as exc:
+                print(f"[test-agent] error inesperado: {exc}")
+                code = 1
+            if not should_reconnect(code, args.reconnect):
+                return code
+            wait = max(1.0, min(delay, 60.0))
+            print(f"[test-agent] reconectando en {wait:.0f}s (Ctrl+C para salir)")
+            time.sleep(wait)
+            if code == 2:
+                delay = initial_delay
+            else:
+                delay = min(max(delay, 1.0) * 2, 60.0)
+    except KeyboardInterrupt:
+        return 0
 
 
 if __name__ == "__main__":

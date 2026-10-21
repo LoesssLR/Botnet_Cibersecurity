@@ -58,6 +58,12 @@ class FindTests(unittest.TestCase):
     def test_busqueda_por_id_exacto(self):
         self.assertIs(self.manager.find("zombie-02"), self.new)
 
+    def test_id_numerico_exacto_tiene_prioridad_sobre_indice(self):
+        old = make_agent("zombie-01", connected_at=100.0)
+        numeric = make_agent("0", connected_at=200.0)
+        manager = build_manager([old, numeric])
+        self.assertIs(manager.find("0"), numeric)
+
     def test_busqueda_por_prefijo_unico(self):
         single = build_manager([self.old])
         self.assertIs(single.find("zombie"), self.old)

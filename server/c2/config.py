@@ -31,6 +31,8 @@ class Config:
     netdata_url: str
     log_dir: Path
     data_dir: Path
+    target_host: str = ""
+    target_http_port: int | None = None
 
     @classmethod
     def load(cls) -> "Config":
@@ -41,6 +43,15 @@ class Config:
             log_dir = PROJECT_ROOT / log_dir
         if not data_dir.is_absolute():
             data_dir = PROJECT_ROOT / data_dir
+        raw_target_port = os.environ.get("TARGET_HTTP_PORT", "").strip()
+        target_http_port: int | None = None
+        if raw_target_port:
+            try:
+                target_http_port = int(raw_target_port)
+            except ValueError as exc:
+                raise ValueError("TARGET_HTTP_PORT debe ser un entero") from exc
+            if not 1 <= target_http_port <= 65535:
+                raise ValueError("TARGET_HTTP_PORT fuera de rango (1-65535)")
         return cls(
             bind_host=os.environ.get("C2_BIND_HOST", DEFAULT_HOST),
             port=int(os.environ.get("C2_PORT", DEFAULT_PORT)),
@@ -48,4 +59,6 @@ class Config:
             netdata_url=os.environ.get("NETDATA_URL", ""),
             log_dir=log_dir,
             data_dir=data_dir,
+            target_host=os.environ.get("TARGET_HOST", "").strip(),
+            target_http_port=target_http_port,
         )

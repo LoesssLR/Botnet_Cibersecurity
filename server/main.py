@@ -24,7 +24,7 @@ async def run(args: argparse.Namespace) -> None:
     config = Config.load()
     if args.host:
         config.bind_host = args.host
-    if args.port:
+    if args.port is not None:
         config.port = args.port
     if args.secret is not None:
         config.shared_secret = args.secret

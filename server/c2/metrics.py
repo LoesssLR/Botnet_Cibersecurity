@@ -5,9 +5,12 @@ import json
 import socket
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 HTTP_TIMEOUT = 4.0
 SOCKET_TIMEOUT = 2.0
+DEFAULT_WINDOW_S = 10
+CHARTS = ("system.cpu", "system.ram", "system.net")
 
 
 def _split_base_url(base_url: str) -> tuple[str, int]:
@@ -26,9 +29,10 @@ def is_netdata_reachable(base_url: str) -> bool:
         return False
 
 
-def fetch_chart_payload(base_url: str, chart: str) -> dict:
+def fetch_chart_payload(base_url: str, chart: str, window_seconds: int = DEFAULT_WINDOW_S) -> dict:
+    window = max(1, int(window_seconds))
     query = urllib.parse.urlencode(
-        {"chart": chart, "after": -60, "points": 1, "group": "average", "format": "json"}
+        {"chart": chart, "after": -window, "points": 1, "group": "average", "format": "json"}
     )
     url = f"{base_url.rstrip('/')}/api/v1/data?{query}"
     with urllib.request.urlopen(url, timeout=HTTP_TIMEOUT) as response:
@@ -70,13 +74,15 @@ def compute_metrics(cpu: dict | None, ram: dict | None, net: dict | None) -> dic
     return result
 
 
-def fetch_target_metrics(base_url: str) -> dict:
+def fetch_target_metrics(base_url: str, window_seconds: int = DEFAULT_WINDOW_S) -> dict:
     """Consulta system.cpu, system.ram y system.net del objetivo (None si no hay dato)."""
 
     def safe(chart: str) -> dict | None:
         try:
-            return parse_chart(fetch_chart_payload(base_url, chart))
+            return parse_chart(fetch_chart_payload(base_url, chart, window_seconds))
         except Exception:
             return None
 
-    return compute_metrics(safe("system.cpu"), safe("system.ram"), safe("system.net"))
+    with ThreadPoolExecutor(max_workers=len(CHARTS)) as executor:
+        rows = list(executor.map(safe, CHARTS))
+    return compute_metrics(*rows)

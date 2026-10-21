@@ -4,21 +4,28 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import shlex
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime
+from urllib.parse import urlsplit, urlunsplit
 
 from .agent import AgentConnection
 from .config import PROJECT_ROOT, Config
 from .manager import AgentManager
 from .metrics import fetch_target_metrics, is_netdata_reachable
 
+log = logging.getLogger("c2.console")
+
 REQUEST_TIMEOUT = 10.0
 SAMPLE_INTERVAL = 5.0
+AFTER_SAMPLE_DELAY = 10.0
 MAX_DURATION_S = 120
 MAX_CONCURRENCY = 200
+LOCAL_TARGET_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
 def _fit(text: str, width: int) -> str:
@@ -44,6 +51,59 @@ def _as_int(value, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _positive_int(value, default: int, maximum: int, field: str) -> int:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        raise ValueError(f"{field} invalido: debe ser un entero mayor que 0")
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field} invalido: debe ser un entero mayor que 0") from None
+    if number <= 0:
+        raise ValueError(f"{field} invalido: debe ser un entero mayor que 0")
+    return min(number, maximum)
+
+
+def _normalize_target(value, config: Config) -> str:
+    target = str(value).strip()
+    if not target:
+        raise ValueError("falta target=http://host[:puerto][/ruta]")
+    try:
+        parsed = urlsplit(target)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError(f"target invalido: {exc}") from None
+    host = parsed.hostname
+    if parsed.scheme.lower() != "http" or not host:
+        raise ValueError("target invalido: use http://host[:puerto][/ruta]")
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_:")
+    if any(character not in allowed for character in host):
+        raise ValueError("target invalido: hostname no permitido")
+    local_target = host.lower() in LOCAL_TARGET_HOSTS
+    configured_host = config.target_host.strip().lower()
+    if configured_host and not local_target and host.lower() != configured_host:
+        raise ValueError(f"target no permitido: se esperaba {config.target_host}")
+    configured_port = config.target_http_port
+    if port is None:
+        port = configured_port
+    elif configured_port is not None and not local_target and port != configured_port:
+        raise ValueError(f"puerto no permitido: se esperaba {configured_port}")
+    host_part = f"[{host}]" if ":" in host else host
+    netloc = f"{host_part}:{port}" if port is not None else host_part
+    return urlunsplit(("http", netloc, parsed.path or "/", parsed.query, ""))
+
+
+def normalize_load_args(args: dict, config: Config) -> dict:
+    if args.get("target") is None:
+        raise ValueError("falta target=http://host[:puerto][/ruta]")
+    return {
+        "target": _normalize_target(args.get("target"), config),
+        "duration": _positive_int(args.get("duration"), 30, MAX_DURATION_S, "duration"),
+        "concurrency": _positive_int(args.get("concurrency"), 20, MAX_CONCURRENCY, "concurrency"),
+    }
 
 
 def _command_timeout(name: str, args: dict) -> float:
@@ -99,9 +159,15 @@ class _StdinReader:
 class Console:
     """Interfaz de linea de comandos para administrar el C2."""
 
-    def __init__(self, manager: AgentManager, config: Config) -> None:
+    def __init__(
+        self,
+        manager: AgentManager,
+        config: Config,
+        after_delay: float = AFTER_SAMPLE_DELAY,
+    ) -> None:
         self.manager = manager
         self.config = config
+        self.after_delay = after_delay
         self.selected: AgentConnection | None = None
 
     def event(self, text: str) -> None:
@@ -151,7 +217,7 @@ class Console:
         elif command == "ping":
             await self._cmd_ping(rest)
         elif command == "kick":
-            self._cmd_kick(rest)
+            await self._cmd_kick(rest)
         elif command in ("metrics", "metricas"):
             await self._cmd_metrics(rest)
         elif command == "status":
@@ -228,6 +294,12 @@ class Console:
             print("uso: send <cmd> [clave=valor ...]")
             return
         name, args = _parse_command(rest)
+        if name == "load":
+            try:
+                args = normalize_load_args(args, self.config)
+            except ValueError as exc:
+                print(f"error: {exc}")
+                return
         await self._request_and_print(self.selected, name, args)
 
     async def _cmd_broadcast(self, rest: list[str]) -> None:
@@ -258,26 +330,30 @@ class Console:
         print(f"-> {ok}/{len(agents)} respondieron ok en {elapsed:.0f} ms")
 
     async def _load_broadcast(self, args: dict) -> None:
-        if "target" not in args:
+        try:
+            request_args = normalize_load_args(args, self.config)
+        except ValueError as exc:
+            print(f"error: {exc}")
             print("uso: broadcast load target=http://IP_OBJETIVO [duration=30] [concurrency=20]")
             return
         agents = self.manager.agents
         if not agents:
             print("(sin agentes conectados)")
             return
-        duration = max(1, min(_as_int(args.get("duration"), 30), MAX_DURATION_S))
-        concurrency = max(1, min(_as_int(args.get("concurrency"), 20), MAX_CONCURRENCY))
-        request_args = {
-            "target": str(args["target"]),
-            "duration": str(duration),
-            "concurrency": str(concurrency),
+        duration = request_args["duration"]
+        concurrency = request_args["concurrency"]
+        metadata = {
+            "run_id": uuid.uuid4().hex[:8],
+            "target": request_args["target"],
+            "duration": duration,
+            "concurrency": concurrency,
         }
-        await self._snapshot("antes")
+        await self._snapshot("antes", metadata)
         print(
             f"inundacion en curso: {len(agents)} agente(s) -> {request_args['target']} "
             f"durante ~{duration}s ({concurrency} conexiones por agente)"
         )
-        sampler = asyncio.create_task(self._sample_loop())
+        sampler = asyncio.create_task(self._sample_loop(metadata))
         try:
             responses = await self.manager.broadcast("load", request_args, timeout=duration + 20.0)
         finally:
@@ -299,11 +375,20 @@ class Console:
                 total_errors += _as_int(data.get("errors"), 0)
             print(f"{agent.agent_id} [{status}]: {json.dumps(data, ensure_ascii=False)}")
         rps = total_sent / duration
+        summary = {
+            "agents": len(agents),
+            "ok": ok,
+            "sent": total_sent,
+            "errors": total_errors,
+            "rps": round(rps, 1),
+        }
         print(
             f"-> {ok}/{len(agents)} ok | solicitudes enviadas: {total_sent} | "
             f"errores: {total_errors} | rps agregado: {rps:.0f}"
         )
-        await self._snapshot("despues")
+        if self.after_delay > 0:
+            await asyncio.sleep(self.after_delay)
+        await self._snapshot("despues", {**metadata, "summary": summary})
 
     async def _cmd_ping(self, rest: list[str]) -> None:
         if rest and rest[0].lower() in ("all", "todos", "*"):
@@ -321,7 +406,7 @@ class Console:
             return
         await self._request_and_print(agent, "ping", {})
 
-    def _cmd_kick(self, rest: list[str]) -> None:
+    async def _cmd_kick(self, rest: list[str]) -> None:
         if not rest:
             print("uso: kick <#|id>")
             return
@@ -329,6 +414,12 @@ class Console:
         if agent is None:
             print(f"no se encontro un agente: {rest[0]}")
             return
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(
+                agent.send({"type": "bye", "reason": "kicked"}),
+                timeout=1.0,
+            )
+        agent.fail_pending(ConnectionError("agente expulsado"))
         agent.close()
         if agent is self.selected:
             self.selected = None
@@ -338,20 +429,31 @@ class Console:
         label = rest[0] if rest else "manual"
         await self._snapshot(label)
 
-    async def _snapshot(self, label: str = "manual") -> bool:
+    async def _snapshot(self, label: str = "manual", extra: dict | None = None) -> bool:
         if not self.config.netdata_url:
-            print("[metricas] NETDATA_URL no esta configurada en .env; no se pueden registrar metricas")
+            message = "[metricas] NETDATA_URL no esta configurada en .env; no se pueden registrar metricas"
+            print(message)
+            log.warning(message)
             return False
         reachable = await asyncio.to_thread(is_netdata_reachable, self.config.netdata_url)
         if not reachable:
-            print(f"[metricas:{label}] Netdata no responde en {self.config.netdata_url}")
+            message = f"[metricas:{label}] Netdata no responde en {self.config.netdata_url}"
+            print(message)
+            log.warning(message)
             return False
         try:
             values = await asyncio.to_thread(fetch_target_metrics, self.config.netdata_url)
         except Exception as exc:
-            print(f"[metricas:{label}] error consultando Netdata: {exc}")
+            message = f"[metricas:{label}] error consultando Netdata: {exc}"
+            print(message)
+            log.warning(message)
             return False
-        record = {"ts": datetime.now().astimezone().isoformat(timespec="seconds"), "label": label, **values}
+        record = {
+            "ts": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "label": label,
+            **(extra or {}),
+            **values,
+        }
         self.config.data_dir.mkdir(parents=True, exist_ok=True)
         path = self.config.data_dir / "metricas.jsonl"
         with path.open("a", encoding="utf-8") as handle:
@@ -360,18 +462,27 @@ class Console:
             shown = path.relative_to(PROJECT_ROOT).as_posix()
         except ValueError:
             shown = str(path)
+        if all(value is None for value in values.values()):
+            log.warning("[metricas:%s] Netdata no devolvio valores utiles", label)
         cpu = "sin dato" if values["cpu_pct"] is None else f"{values['cpu_pct']}%"
         ram = "sin dato" if values["ram_pct"] is None else f"{values['ram_pct']}%"
         net = "sin dato" if values["net_kbit_s"] is None else f"{values['net_kbit_s']} kbit/s"
         print(f"[metricas:{label}] cpu {cpu} | ram {ram} | red {net} | guardado en {shown}")
         return True
 
-    async def _sample_loop(self) -> None:
+    async def _sample_loop(self, extra: dict | None = None) -> None:
         try:
             while True:
                 await asyncio.sleep(SAMPLE_INTERVAL)
-                if not await self._snapshot("durante"):
-                    return
+                try:
+                    ok = await self._snapshot("durante", extra)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    log.exception("error en muestra durante")
+                    continue
+                if not ok:
+                    log.warning("muestra durante fallida; se continua con la siguiente")
         except asyncio.CancelledError:
             return
 

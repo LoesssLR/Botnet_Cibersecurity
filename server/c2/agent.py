@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 
 from .protocol import encode
 
+SEND_TIMEOUT = 5.0
+
 
 @dataclass
 class AgentConnection:
@@ -41,15 +43,20 @@ class AgentConnection:
 
     async def send(self, message: dict) -> None:
         async with self._send_lock:
+            if getattr(self.writer, "is_closing", lambda: False)():
+                raise ConnectionError("conexion cerrada")
             self.writer.write(encode(message))
+            drain = getattr(self.writer, "drain", None)
+            if drain is not None:
+                await asyncio.wait_for(drain(), timeout=SEND_TIMEOUT)
 
     async def request(self, name: str, args: dict | None = None, timeout: float = 10.0) -> dict:
         command_id = uuid.uuid4().hex[:12]
         future = asyncio.get_running_loop().create_future()
         self._pending[command_id] = future
         self.commands_sent += 1
-        await self.send({"type": "command", "id": command_id, "name": name, "args": args or {}})
         try:
+            await self.send({"type": "command", "id": command_id, "name": name, "args": args or {}})
             return await asyncio.wait_for(future, timeout)
         finally:
             self._pending.pop(command_id, None)

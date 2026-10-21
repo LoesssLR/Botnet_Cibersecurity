@@ -19,7 +19,7 @@ prueba de la Universidad, con autorización del docente.
 3. **Tráfico de ataque controlado:** ante una orden del atacante, los zombies generan
    solicitudes contra el servidor víctima.
 4. **Métricas:** el servidor víctima registra su comportamiento con Netdata; el C2
-   consulta esa información y la registra.
+   consulta la API del puerto 19999 y la registra.
 
 ## Diagrama
 
@@ -55,7 +55,9 @@ prueba de la Universidad, con autorización del docente.
 | SSH | 22 | TCP | Solo IP del equipo de trabajo |
 | Consola/C2 | 8443 | TCP | Internet (los zombies se conectan desde la red UTN) |
 | HTTP víctima | 80 | TCP | Internet (tráfico de prueba) |
-| Netdata | 19999 | TCP | Solo IP del equipo de trabajo (o túnel SSH) |
+| Netdata | 19999 | TCP | C2 (IP privada del botnet o elástica autorizada) y equipo de trabajo (o túnel SSH) |
 
-> Durante las pruebas, Netdata queda accesible solo mediante túnel SSH; en la
+> El C2 necesita acceso al puerto 19999 para consultar CPU/RAM/red. Si se usa la
+> IP privada dentro de la misma VPC, el grupo de seguridad de la víctima debe
+> permitir el origen `sg-botnet`. Para el navegador, usar túnel SSH; en la
 > demostración se puede habilitar temporalmente al rango de la red de la Universidad.

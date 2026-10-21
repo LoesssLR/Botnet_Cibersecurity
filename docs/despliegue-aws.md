@@ -87,6 +87,9 @@ sudo ufw enable
 # En la víctima
 sudo ufw allow from <IP_DEL_EQUIPO> to any port 22 proto tcp
 sudo ufw allow 80/tcp
+# Netdata solo para el C2 (IP privada del botnet o CIDR de la VPC;
+# si está en otra cuenta, usar <IP_ELASTICA_BOTNET>/32)
+sudo ufw allow from <IP_PRIVADA_BOTNET> to any port 19999 proto tcp
 sudo ufw enable
 ```
 
@@ -132,11 +135,16 @@ curl -s 'http://<IP_PRIVADA_VICTIMA>:19999/api/v1/info' | head -c 200
 
 1. Conectarse por SSH y verificar Python: `python3 --version` (Ubuntu 24.04 incluye 3.12).
 2. Subir el repositorio (`git clone` o `scp -r botnet ubuntu@<IP_BOTNET>:~`).
-3. `cp .env.example .env` y completar:
+3. `cp .env.example .env`, `chmod 600 .env` y completar:
    - `NETDATA_URL=http://<IP_PRIVADA_VICTIMA>:19999` si la víctima está en el
      mismo VPC, o `http://<IP_ELASTICA_VICTIMA>:19999` si está en otra cuenta
      (ver sección 6).
    - `C2_SHARED_SECRET` (opcional; si se define, el agente/`.exe` debe enviar el mismo valor).
+   - `TARGET_HOST=<IP_VICTIMA>` y `TARGET_HTTP_PORT=80` si se quiere allowlist de
+     objetivos. Si `TARGET_HOST` queda vacío, se permite cualquier `http://`.
+     `127.0.0.1`, `localhost` y `::1` siempre se permiten para pruebas locales.
+     Si el `.env` trae el placeholder viejo `TARGET_HOST=203.0.113.10`, cambiarlo
+     por la IP real o vaciarlo; de lo contrario los `load` a la víctima se rechazan.
 4. Ejecutar para una prueba rápida: `python3 server/main.py` (el puerto 8443 ya está
    habilitado en `sg-botnet`). Para dejarlo persistente, instalar el servicio de la
    sección 8.
@@ -148,8 +156,9 @@ curl -s 'http://<IP_PRIVADA_VICTIMA>:19999/api/v1/info' | head -c 200
 ## 8. Servicio persistente del C2 (systemd + tmux)
 
 El repositorio incluye `server/deploy/botnet-c2.service`: arranca el servidor
-dentro de una sesión `tmux`, lo reinicia si falla y lo levanta al encender la
-instancia (sin ventanas visibles).
+dentro de una sesión `tmux`, reinicia Python si el proceso falla y lo levanta al
+encender la instancia (sin ventanas visibles). Si muere `tmux`, systemd no lo
+detecta automáticamente; en ese caso usar `sudo systemctl restart botnet-c2`.
 
 ```bash
 sudo apt install -y tmux

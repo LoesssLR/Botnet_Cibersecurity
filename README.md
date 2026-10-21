@@ -13,16 +13,18 @@ y después de cada prueba).
 > **Ámbito autorizado del curso.** Laboratorio de Seguridad de TI II (UTN) con
 > autorización del docente: se ejecuta únicamente sobre instancias propias en AWS
 > y equipos de prueba del laboratorio. El servidor C2 se despliega como servicio
-> persistente en la instancia del equipo (arranque automático y reinicio ante
-> fallos, sin ventanas, administrado por SSH y consola) y todo el código usa solo
-> la biblioteca estándar de Python. La inundación es acotada, con objetivo
-> explícito (`duration` ≤ 120 s, `concurrency` ≤ 200 por agente, solo `http://`),
-> y no debe utilizarse fuera del alcance autorizado del curso.
+> persistente en la instancia del equipo (arranque automático, reinicio del
+> proceso ante fallos, sin ventanas, administrado por SSH y consola) y todo el
+> código usa solo la biblioteca estándar de Python. La inundación es acotada, con
+> objetivo explícito (`duration` ≤ 120 s, `concurrency` ≤ 200 por agente, solo
+> `http://` y allowlist opcional), y no debe utilizarse fuera del alcance
+> autorizado del curso.
 
-**Estado:** implementado y validado en local (57 pruebas unitarias + prueba de humo
-+ prueba en vivo con agente real, inundación y métricas). Incluye servicio
-persistente para la instancia (`server/deploy/`). Pendiente: despliegue en AWS y
-ensayo final con el `.exe` del compañero.
+**Estado:** desplegado en AWS y validado en local (80 pruebas unitarias + prueba
+de humo + prueba en vivo). La conexión inversa del `.exe` del compañero ya se
+validó a nivel de `hello`; queda la prueba final de `load` desde ese `.exe` y
+guardar la evidencia para la exposición. Incluye servicio persistente para la
+instancia (`server/deploy/`).
 
 ## 1. Datos del curso
 
@@ -64,9 +66,9 @@ deja un registro JSONL de CPU, RAM y red antes/durante/después, listo para el i
 | `server/c2/manager.py` | Servidor asyncio: registro de conexiones, eventos en vivo y broadcast |
 | `server/c2/console.py` | Menú de consola + flujo `load` con métricas antes/durante/después |
 | `server/c2/metrics.py` | API de Netdata: consulta y cálculo de CPU, RAM y red del objetivo |
-| `server/tests/` | Suite unitaria (`run_all.py`), prueba de humo de integración y 6 módulos de pruebas |
+| `server/tests/` | Suite unitaria (`run_all.py`), prueba de humo de integración y 9 módulos de pruebas |
 | `agent/test_agent.py` | Agente de prueba (zombie simulado) que implementa el protocolo, el comando `load` y la reconexión automática (`--reconnect`) |
-| `server/deploy/botnet-c2.service` | Unidad systemd + tmux: servidor persistente (arranque automático, reinicio ante fallos, sin ventanas) |
+| `server/deploy/botnet-c2.service` | Unidad systemd + tmux: servidor persistente (arranque automático, reinicio del proceso, sin ventanas; si muere tmux hay que reiniciar el servicio) |
 | `docs/protocolo.md` | Contrato de mensajes C2 ↔ agente (para integrar el `.exe` del compañero) |
 | `docs/arquitectura.md` | Componentes, flujos, puertos y especificaciones de AWS |
 | `docs/despliegue-aws.md` | Guía paso a paso: instancias, IPs elásticas, grupos de seguridad, Netdata |
@@ -108,7 +110,10 @@ botnet/
 │       ├── test_manager.py
 │       ├── test_console_helpers.py
 │       ├── test_metrics.py
-│       └── test_load_helpers.py
+│       ├── test_load_helpers.py
+│       ├── test_load_contract.py    # Tipos, topes, allowlist y rechazo de load
+│       ├── test_manager_auth.py     # Secreto, saneamiento, límite de conexiones
+│       └── test_agent_lifecycle.py  # Cancelación de load, stop, bye y rechazo auth
 └── agent/
     └── test_agent.py        # Agente de prueba (zombie simulado, solo laboratorio)
 ```
@@ -122,7 +127,7 @@ botnet/
 ```powershell
 git clone <URL-del-repositorio>
 cd botnet
-Copy-Item .env.example .env        # completar NETDATA_URL (y C2_SHARED_SECRET si se usará)
+Copy-Item .env.example .env        # completar NETDATA_URL, TARGET_HOST y C2_SHARED_SECRET
 python server/main.py              # escucha en 0.0.0.0:8443
 ```
 
@@ -130,12 +135,18 @@ En Ubuntu usar `python3` y `cp`:
 
 ```bash
 cp .env.example .env
+chmod 600 .env
 python3 server/main.py
 ```
 
+`TARGET_HOST` es opcional: si se define, `load` solo acepta ese host (además de
+`127.0.0.1`, `localhost` y `::1` para pruebas locales). `TARGET_HTTP_PORT` se
+aplica cuando el target no indica puerto. Dejar `TARGET_HOST` vacío si se quiere
+permitir cualquier `http://` dentro del laboratorio.
+
 ## 6. Pruebas y calidad del código
 
-Suite unitaria (57 pruebas, sin dependencias, sin red real):
+Suite unitaria (80 pruebas, sin dependencias externas, sin red externa; usa solo loopback):
 
 ```bash
 python server/tests/run_all.py
@@ -144,7 +155,7 @@ python server/tests/run_all.py
 Resultado esperado:
 
 ```text
-Ran 57 tests in 0.13s
+Ran 80 tests in 0.55s
 
 OK
 ```
@@ -162,10 +173,13 @@ Debe finalizar con `OK: smoke test del C2 paso (...)`.
 |---|---|---|
 | `test_protocol.py` | Codificación/decodificación JSON por línea, tipos inválidos, EOF y límite de tamaño | 9 |
 | `test_agent_connection.py` | Envío, correlación `id`↔respuesta, timeout, `fail_pending`, cierre y `touch` | 7 |
-| `test_manager.py` | Orden por conexión y búsqueda por índice, id exacto, prefijo único y ambigüedad | 7 |
+| `test_manager.py` | Orden por conexión y búsqueda por índice, id exacto, prefijo único y ambigüedad | 8 |
 | `test_console_helpers.py` | Formato de tabla/tiempos, parseo de comandos y timeout dinámico de `load` | 15 |
 | `test_metrics.py` | Parseo de charts de Netdata y cálculo de CPU/RAM/red sin red real | 8 |
 | `test_load_helpers.py` | Parseo del objetivo HTTP, petición, topes y política de reconexión | 11 |
+| `test_load_contract.py` | Tipos enteros de `load`, topes, allowlist, puerto, metadatos y rechazo de esquemas | 14 |
+| `test_manager_auth.py` | Secreto inválido, saneamiento de `agent_id` y límite de conexiones | 5 |
+| `test_agent_lifecycle.py` | `stop` cancela el `load`, `ping` concurrente, `bye` y rechazo `auth` | 3 |
 
 La prueba en vivo (manual, se muestra en la sección 9) valida el sistema completo:
 agente real conectado, inundación con métricas por zombie y agregadas, y cierre limpio.
@@ -182,7 +196,12 @@ agente real conectado, inundación con métricas por zombie y agregadas, y cierr
 | `kick <#\|id>` | Cierra la conexión de un agente |
 | `metrics [etiqueta]` | Consulta Netdata del objetivo y registra en `data/metricas.jsonl` |
 | `status` | Uptime, agentes y conexiones totales |
-| `clear` / `exit` | Limpia pantalla / apaga el servidor |
+| `clear` / `exit` | Limpia pantalla / cierra la sesión actual (bajo systemd el servicio la reinicia) |
+
+`kick` cierra la conexión y avisa al agente con un frame `bye`; si el agente es
+externo y tiene reconexión propia, puede volver. Para expulsarlo de forma
+permanente usar `send stop` (el agente de prueba termina con código 0 y no
+reconecta).
 
 Ejemplo de inundación controlada:
 
@@ -219,31 +238,35 @@ Qué observar:
 Con agentes conectados y el servidor víctima activo, desde la consola:
 
 ```text
-c2> metrics antes
-[metricas:antes] cpu 13.9% | ram 56.0% | red 3469.0 kbit/s | guardado en data/metricas.jsonl
 c2> broadcast load target=http://IP_VICTIMA duration=10 concurrency=10
 inundacion en curso: 1 agente(s) -> http://IP_VICTIMA durante ~10s (10 conexiones por agente)
-[metricas:durante] cpu 13.9% | ram 56.0% | red 3469.0 kbit/s | guardado en data/metricas.jsonl
+[metricas:antes] cpu 4.2% | ram 18.1% | red 2104.0 kbit/s | guardado en data/metricas.jsonl
+[metricas:durante] cpu 48.7% | ram 19.0% | red 18650.0 kbit/s | guardado en data/metricas.jsonl
 zombie-01 [ok]: {"sent": 11185, "errors": 0, "duration_s": 10, "rps": 1118.5}
 -> 1/1 ok | solicitudes enviadas: 11185 | errores: 0 | rps agregado: 1118
-[metricas:despues] cpu 13.9% | ram 56.0% | red 3469.0 kbit/s | guardado en data/metricas.jsonl
+[metricas:despues] cpu 5.1% | ram 18.3% | red 2300.0 kbit/s | guardado en data/metricas.jsonl
 ```
 
-(Valores de ejemplo reales de la validación local; con el servidor víctima en AWS
-y varios zombies, las métricas de Netdata muestran el incremento de CPU/RAM/red
-durante la carga.)
+(Valores ilustrativos; con el servidor víctima en AWS y varios zombies, las
+métricas de Netdata deben mostrar el incremento real. La muestra `durante` usa
+una ventana corta de 10 s para no diluir pruebas de 10-30 s; `despues` se toma
+tras una pausa de 10 s.)
 
 Qué observar:
 
 1. El C2 registra automáticamente métricas **antes**, cada 5 s **durante** y
-   **después** de la inundación (comando `metrics` para tomas manuales).
+   **después** de la inundación (comando `metrics` para tomas manuales). La
+   ventana de Netdata es de 10 s para no diluir pruebas cortas.
 2. Cada zombie reporta solicitudes enviadas, errores y RPS; la consola agrega el total.
 3. En el dashboard de Netdata del servidor víctima (túnel SSH a `localhost:19999`)
    se observa el estrés en vivo: CPU, RAM y tráfico de red.
-4. La evidencia queda en `data/metricas.jsonl`, una línea JSON por toma:
+4. La evidencia queda en `data/metricas.jsonl`, una línea JSON por toma. Las tomas
+   de `load` incluyen `run_id`, `target`, `duration`, `concurrency` y, en la última,
+   un `summary` con el resultado agregado:
 
 ```json
-{"ts": "2026-11-11T15:30:02-06:00", "label": "antes", "cpu_pct": 4.2, "ram_pct": 18.1, "net_kbit_s": 2104.0}
+{"ts": "2026-11-11T15:30:02-06:00", "label": "antes", "run_id": "a1b2c3d4", "target": "http://IP_VICTIMA:80/", "duration": 10, "concurrency": 10, "cpu_pct": 4.2, "ram_pct": 18.1, "net_kbit_s": 2104.0}
+{"ts": "2026-11-11T15:30:22-06:00", "label": "despues", "run_id": "a1b2c3d4", "target": "http://IP_VICTIMA:80/", "duration": 10, "concurrency": 10, "cpu_pct": 5.1, "ram_pct": 18.3, "net_kbit_s": 2300.0, "summary": {"agents": 1, "ok": 1, "sent": 11185, "errors": 0, "rps": 1118.5}}
 ```
 
 Para practicar sin el servidor víctima basta cualquier HTTP local:
@@ -262,22 +285,28 @@ Para practicar sin el servidor víctima basta cualquier HTTP local:
 4. La inundación lanza K workers asyncio por agente con fecha límite; cada worker
    abre conexión, envía `GET` con `Connection: close`, lee la respuesta y cierra.
    El agente devuelve `{sent, errors, rps, duration_s}` — sin firma ni reconocimiento
-   de nada: es una carga HTTP genérica contra el objetivo indicado.
+   de nada: es una carga HTTP genérica contra el objetivo indicado. El `load` corre
+   como tarea en segundo plano, así que `ping`/`stop` siguen funcionando durante la
+   prueba y un `stop` o la caída del C2 cancelan la inundación de inmediato.
 5. Métricas: se consultan tres charts de la API v1 de Netdata —
    `system.cpu` (100 − idle), `system.ram` (used / total) y `system.net`
-   (suma de dimensiones) — con timeout y tolerancia a fallos por chart.
+   (suma de dimensiones) — con timeout, ventana corta de 10 s y las tres consultas
+   en paralelo; un chart que falla no bloquea a los demás.
 6. El apagado cierra primero los agentes y luego espera `wait_closed()` con un
    timeout de 3 s (evita el bloqueo de `Server.wait_closed()` de Python 3.12+
    cuando hay conexiones activas). Ese caso se encontró durante las pruebas en vivo
    y quedó cubierto por el flujo del smoke test.
 7. Persistencia: `server/deploy/botnet-c2.service` arranca el C2 dentro de una
-   sesión `tmux` gestionada por systemd (arranque al encender la instancia y
-   reinicio ante fallos); la consola se administra con `tmux attach -t botnet-c2`.
-   Los agentes con `--reconnect` vuelven solos si el C2 se reinicia.
+   sesión `tmux` gestionada por systemd (arranque al encender la instancia); el
+   bucle interno reinicia Python si el proceso se cae. Si muere `tmux`, systemd no
+   lo detecta: para un apagado/arranque limpio usar `systemctl restart`. La consola
+   se administra con `tmux attach -t botnet-c2`. Los agentes con `--reconnect`
+   vuelven solos si el C2 se reinicia.
 
 El detalle del protocolo está en [`docs/protocolo.md`](docs/protocolo.md); el
 compañero debe implementar `hello`, `heartbeat` y `result` con ese contrato para
-conectar el `.exe` al C2.
+conectar el `.exe` al C2, y tolerar los frames `error`/`bye` que el servidor usa
+para rechazo de autenticación y expulsión.
 
 ## 11. Relación con la rúbrica (ítem 1 — 20 pts)
 
@@ -304,15 +333,27 @@ Del lado defensivo, las métricas de Netdata y el registro JSONL representan la
 telemetría que permitiría a un analista evidenciar un T1498 en curso (CPU, red y
 conteo de solicitudes correlacionados).
 
-## 13. Límites de seguridad del laboratorio
+## 13. Límites de seguridad y limitaciones conocidas
 
 - El `target` de la inundación debe indicarse explícitamente y es el servidor
   víctima del laboratorio (AWS propio). No hay objetivos por defecto.
-- Topes fijos: `duration` ≤ 120 s, `concurrency` ≤ 200 por agente y solo `http://`.
+- Topes fijos aplicados por el servidor en `send load` y `broadcast load`:
+  `duration` ≤ 120 s, `concurrency` ≤ 200 por agente y solo `http://` con hostname
+  válido. Si `TARGET_HOST` está definido, el host debe coincidir (se exceptúan
+  `127.0.0.1`, `localhost` y `::1`); `TARGET_HTTP_PORT` se aplica si el target no
+  trae puerto.
 - El servidor C2 es estándar: protocolo documentado y sin ofuscación ni evasión;
   su persistencia es la de un servicio normal (systemd + tmux, sin ventanas) en la
-  instancia del equipo.
+  instancia del equipo. Si muere `tmux`, systemd no lo reinicia automáticamente.
 - `C2_SHARED_SECRET` (opcional) evita que agentes ajenos al equipo se registren.
+  Viaja sin cifrar: usar un valor aleatorio exclusivo del laboratorio y restringir
+  el grupo de seguridad del puerto 8443 cuando sea posible. No se implementó TLS
+  para no romper la compatibilidad con el `.exe` externo.
+- `kick` cierra la conexión y envía un `bye`; un agente externo con reconexión
+  propia podría volver. Para expulsión permanente usar `send stop`. El agente de
+  prueba cancela cualquier `load` en curso al recibir `stop` o al perder el C2.
+- El archivo `.env` debe quedar con permisos `600` (`chmod 600 .env`), porque
+  contiene el secreto compartido y la URL de Netdata.
 - Fuera de este repositorio quedan el troyano y el servidor víctima (entregables
   de otros integrantes); este proyecto cubre solo la parte del servidor botnet.
 - Costos AWS: detener las instancias al terminar y mantener las IPs elásticas
@@ -325,9 +366,11 @@ Resumen (guía completa en [`docs/despliegue-aws.md`](docs/despliegue-aws.md)):
 1. EC2 `botnet-c2`: Ubuntu Server 24.04, `t3.medium` (2 vCPU / 4 GB), puerto 8443
    abierto, IP elástica (dirección fija que llevará el `.exe`).
 2. EC2 `victima`: Ubuntu Server 24.04, `t3.micro`, Netdata instalado, IP elástica.
-3. En el botnet: subir el repositorio, `cp .env.example .env` y configurar
-   `NETDATA_URL=http://<IP_PRIVADA_VICTIMA>:19999` (misma cuenta/VPC; si está en
-   otra cuenta, la IP elástica con el acceso autorizado en Netdata).
+3. En el botnet: subir el repositorio, `cp .env.example .env`, `chmod 600 .env` y
+   configurar `NETDATA_URL=http://<IP_PRIVADA_VICTIMA>:19999` (misma cuenta/VPC;
+   si está en otra cuenta, la IP elástica con el acceso autorizado en Netdata).
+   Opcionalmente definir `TARGET_HOST=<IP_VICTIMA>` y `TARGET_HTTP_PORT=80` como
+   allowlist; si `TARGET_HOST` queda vacío se permite cualquier `http://`.
 4. Instalar el servicio persistente: `sudo apt install -y tmux`, copiar
    `server/deploy/botnet-c2.service` a `/etc/systemd/system/`,
    `sudo systemctl enable --now botnet-c2`; la consola se administra con
@@ -337,11 +380,15 @@ Resumen (guía completa en [`docs/despliegue-aws.md`](docs/despliegue-aws.md)):
 
 - Crear las **IPs elásticas antes** de compilar el `.exe` del compañero: la
   dirección quedará fija en el binario.
-- `.env` completo y `C2_SHARED_SECRET` compartido con el compañero si se usa.
+- `.env` completo, `chmod 600 .env` y `C2_SHARED_SECRET` compartido con el
+  compañero si se usa. Si el `.env` quedó con el placeholder viejo
+  `TARGET_HOST=203.0.113.10`, vaciarlo o cambiarlo por la IP real de la víctima.
 - Netdata del victim: abrir el puerto 19999 al IP del botnet o usar túnel SSH
   (`ssh -L 19999:localhost:19999 ubuntu@<IP_VICTIMA>`).
 - Orden sugerido de la demo: panel de conexiones (zombies llegando) → `info`/`ping`
-  → `broadcast load` con Netdata a la vista → `metrics`/`data/metricas.jsonl` → cierre.
+  → `broadcast load` con Netdata a la vista → `data/metricas.jsonl` → cierre.
+  Para expulsar un agente de prueba usar `kick`; si se usa un `.exe` externo con
+  reconexión propia, usar `send stop`.
 - Ejecutar antes de la clase: `python server/tests/run_all.py` y `smoke_test.py`.
 - Verificar el servicio en la instancia (`sudo systemctl status botnet-c2`) y que
   la consola esté accesible con `tmux attach -t botnet-c2`.
@@ -349,8 +396,10 @@ Resumen (guía completa en [`docs/despliegue-aws.md`](docs/despliegue-aws.md)):
 
 ## 16. Mejoras propuestas
 
-- TLS/mTLS en el canal C2 y token rotativo en lugar de secreto fijo.
-- Lista blanca de objetivos y rate limiting por agente (anti-abuso).
+- TLS/mTLS en el canal C2 y token rotativo en lugar de secreto fijo (requiere
+  actualizar el `.exe`; por eso no se implementó en esta iteración).
+- Rate limiting por agente y límite global configurable de solicitudes, además del
+  tope de conexiones y de concurrencia ya existente.
 - Persistencia de resultados en SQLite y exportación de reportes del laboratorio.
 - Alertas de salud del servicio (systemd timer o healthcheck) y rotación de logs.
 - Panel web o TUI (por ejemplo Textual) para la demostración.
