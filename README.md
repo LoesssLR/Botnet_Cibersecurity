@@ -198,10 +198,14 @@ agente real conectado, inundación con métricas por zombie y agregadas, y cierr
 | `status` | Uptime, agentes y conexiones totales |
 | `clear` / `exit` | Limpia pantalla / cierra la sesión actual (bajo systemd el servicio la reinicia) |
 
-La consola autocompleta con `Tab` (comandos, índices e ids de agentes,
-subcomandos de `send`/`broadcast`, claves de `load` y etiquetas de `metrics`)
-y conserva historial con las flechas arriba/abajo cuando se ejecuta en una
-terminal real (tmux/SSH); en Windows o con stdin redirigido usa la lectura
+La consola usa un editor de línea propio en modo crudo (sin `readline`, solo
+stdlib): autocompleta con `Tab` (comandos, índices e ids de agentes,
+subcomandos de `send`/`broadcast`, claves de `load` y etiquetas de `metrics`),
+conserva historial con las flechas arriba/abajo, edita con `Backspace` y
+flechas izquierda/derecha, y redibuja la línea en edición cuando el servidor
+imprime eventos en vivo (los zombies que llegan no borran lo que estás
+escribiendo). `Ctrl+C` borra la línea actual (no apaga el servidor) y `Ctrl+D`
+en línea vacía sí lo apaga. En Windows o con stdin redirigido usa la lectura
 simple sin edición. Para salir de la consola **sin** apagar el C2 (dentro de
 tmux) se usa `Ctrl+B` y luego `D` (detach); `exit` sí apaga el servidor.
 

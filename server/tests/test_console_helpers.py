@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from c2.console import (
     REQUEST_TIMEOUT,
+    _LineEditor,
     _as_int,
     _command_timeout,
     _fit,
@@ -163,3 +164,96 @@ class CompletionOptionsTests(unittest.TestCase):
     def test_comando_sin_completar_no_devuelve_opciones(self):
         self.assertEqual(completion_options("status ", []), [])
         self.assertEqual(completion_options("help ", []), [])
+
+
+class LineEditorTests(unittest.TestCase):
+    def _editor(self):
+        return _LineEditor(lambda: [])
+
+    def test_insertar_y_mover_cursor(self):
+        editor = self._editor()
+        editor.insert("abc")
+        self.assertEqual(editor.text, "abc")
+        self.assertEqual(editor.cursor, 3)
+        editor.move_left()
+        editor.insert("X")
+        self.assertEqual(editor.text, "abXc")
+        self.assertEqual(editor.cursor, 3)
+
+    def test_backspace_y_delete(self):
+        editor = self._editor()
+        editor.insert("abc")
+        editor.backspace()
+        self.assertEqual(editor.text, "ab")
+        editor.home()
+        editor.delete_forward()
+        self.assertEqual(editor.text, "b")
+
+    def test_clear_line_vacia_el_buffer(self):
+        editor = self._editor()
+        editor.insert("ping all")
+        editor.clear_line()
+        self.assertEqual(editor.text, "")
+        self.assertEqual(editor.cursor, 0)
+
+    def test_historial_arriba_y_abajo(self):
+        editor = self._editor()
+        editor.insert("list")
+        editor.commit_history()
+        editor.reset()
+        editor.insert("status")
+        editor.commit_history()
+        editor.reset()
+        editor.history_up()
+        self.assertEqual(editor.text, "status")
+        editor.history_up()
+        self.assertEqual(editor.text, "list")
+        editor.history_down()
+        self.assertEqual(editor.text, "status")
+        editor.history_down()
+        self.assertEqual(editor.text, "")  # vuelve al borrador vacio
+
+    def test_historial_no_duplica_consecutivos(self):
+        editor = self._editor()
+        editor.insert("status")
+        editor.commit_history()
+        editor.reset()
+        editor.insert("status")
+        editor.commit_history()
+        editor.reset()
+        editor.history_up()
+        self.assertEqual(editor.text, "status")
+        editor.history_up()
+        self.assertEqual(editor.text, "status")
+
+    def test_current_word_segun_cursor(self):
+        editor = self._editor()
+        editor.insert("broadcast lo")
+        self.assertEqual(editor.current_word(), "lo")
+        editor.insert("ad")
+        self.assertEqual(editor.current_word(), "load")
+        editor.insert(" ")
+        self.assertEqual(editor.current_word(), "")
+
+    def test_complete_palabra_unica_la_inserta(self):
+        editor = self._editor()
+        editor.insert("broadcast lo")
+        listing = editor.complete()
+        self.assertIsNone(listing)
+        self.assertEqual(editor.text, "broadcast load")
+
+    def test_complete_con_varias_muestra_lista(self):
+        editor = self._editor()
+        editor.insert("s")
+        listing = editor.complete()
+        self.assertIsNotNone(listing)
+        self.assertIn("select", listing)
+        self.assertIn("send", listing)
+        self.assertEqual(editor.text, "s")  # no cambio el texto
+
+    def test_complete_comando_incompleto_rellena_prefijo_comun(self):
+        editor = self._editor()
+        editor.insert("m")
+        listing = editor.complete()
+        self.assertIsNone(listing)
+        self.assertEqual(editor.text, "metric")  # prefijo comun de metrics/metricas

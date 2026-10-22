@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import contextlib
 import json
 import logging
+import os
+import select
 import shlex
 import sys
 import threading
@@ -206,12 +209,133 @@ def completion_options(buffer: str, agent_refs: list[str], text: str = "") -> li
     return [option for option in options if option.startswith(text)]
 
 
-class _StdinReader:
-    """Lee stdin en un hilo daemon para no bloquear el cierre del proceso.
+class _LineEditor:
+    """Estado de edicion de linea: buffer, cursor, historial y completado (sin I/O)."""
 
-    Si el modulo readline esta disponible y stdin es una terminal, usa
-    input() para habilitar autocompletado con Tab e historial con las
-    flechas; en caso contrario usa sys.stdin.readline() sin edicion.
+    def __init__(self, agent_refs_provider: Callable[[], list[str]]) -> None:
+        self._agent_refs_provider = agent_refs_provider
+        self._buffer = ""
+        self._cursor = 0
+        self._history: list[str] = []
+        self._hist_index: int | None = None
+        self._draft = ""
+
+    def reset(self) -> None:
+        self._buffer = ""
+        self._cursor = 0
+        self._hist_index = None
+        self._draft = ""
+
+    @property
+    def text(self) -> str:
+        return self._buffer
+
+    @property
+    def cursor(self) -> int:
+        return self._cursor
+
+    def insert(self, chars: str) -> None:
+        self._buffer = self._buffer[: self._cursor] + chars + self._buffer[self._cursor :]
+        self._cursor += len(chars)
+
+    def backspace(self) -> None:
+        if self._cursor == 0:
+            return
+        self._buffer = self._buffer[: self._cursor - 1] + self._buffer[self._cursor :]
+        self._cursor -= 1
+
+    def delete_forward(self) -> None:
+        if self._cursor >= len(self._buffer):
+            return
+        self._buffer = self._buffer[: self._cursor] + self._buffer[self._cursor + 1 :]
+
+    def move_left(self) -> None:
+        self._cursor = max(0, self._cursor - 1)
+
+    def move_right(self) -> None:
+        self._cursor = min(len(self._buffer), self._cursor + 1)
+
+    def home(self) -> None:
+        self._cursor = 0
+
+    def end(self) -> None:
+        self._cursor = len(self._buffer)
+
+    def clear_line(self) -> None:
+        self._buffer = ""
+        self._cursor = 0
+        self._hist_index = None
+
+    def commit_history(self) -> None:
+        line = self._buffer.strip()
+        if line and (not self._history or self._history[-1] != line):
+            self._history.append(line)
+            if len(self._history) > 200:
+                self._history.pop(0)
+
+    def history_up(self) -> None:
+        if not self._history:
+            return
+        if self._hist_index is None:
+            self._draft = self._buffer
+            self._hist_index = len(self._history) - 1
+        elif self._hist_index > 0:
+            self._hist_index -= 1
+        self._buffer = self._history[self._hist_index]
+        self._cursor = len(self._buffer)
+
+    def history_down(self) -> None:
+        if self._hist_index is None:
+            return
+        if self._hist_index < len(self._history) - 1:
+            self._hist_index += 1
+            self._buffer = self._history[self._hist_index]
+        else:
+            self._hist_index = None
+            self._buffer = self._draft
+        self._cursor = len(self._buffer)
+
+    def current_word(self) -> str:
+        prefix = self._buffer[: self._cursor]
+        if not prefix or prefix.endswith(" "):
+            return ""
+        return prefix.split()[-1]
+
+    def complete(self) -> str | None:
+        """Completa la palabra bajo el cursor.
+
+        Devuelve la lista de opciones como texto si hay varias (el llamador
+        la muestra); en caso contrario completa la palabra o el prefijo comun.
+        """
+        text = self.current_word()
+        try:
+            agent_refs = list(self._agent_refs_provider())
+        except Exception:
+            agent_refs = []
+        try:
+            options = completion_options(self._buffer, agent_refs, text)
+        except Exception:
+            options = []
+        if not options:
+            return None
+        if len(options) == 1:
+            self.insert(options[0][len(text) :])
+            return None
+        common = os.path.commonprefix(options)
+        if len(common) > len(text):
+            self.insert(common[len(text) :])
+            return None
+        return "  ".join(options)
+
+
+class _StdinReader:
+    """Lee stdin en un hilo daemon sin bloquear el cierre del proceso.
+
+    En terminales POSIX usa un editor de linea propio en modo crudo
+    (autocompletado con Tab, historial con flechas, edicion con
+    Backspace/flechas) y redibuja la linea cuando el servidor imprime
+    eventos, para que la salida no corrompa lo que el operador escribe.
+    En Windows o con stdin redirigido usa sys.stdin.readline() sin edicion.
     """
 
     def __init__(
@@ -223,9 +347,13 @@ class _StdinReader:
         self._queue: asyncio.Queue[str | None] = asyncio.Queue()
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
         self._agent_refs_provider = agent_refs_provider or (lambda: [])
-        self._readline = None
+        self._editor = _LineEditor(self._agent_refs_provider)
+        self._lock = threading.Lock()
         self._resume = threading.Event()
         self._resume.set()
+        self._editing = False
+        self._raw = False
+        self._old_attrs = None
 
     def start(self) -> None:
         self._thread.start()
@@ -234,68 +362,182 @@ class _StdinReader:
         """Autoriza al hilo lector a mostrar el siguiente prompt."""
         self._resume.set()
 
-    def _setup_readline(self) -> None:
-        try:
-            import readline
-        except ImportError:
+    def print_event(self, text: str) -> None:
+        """Imprime un evento del servidor sin corromper la linea en edicion."""
+        if not self._raw:
+            print(f"\n{text}", flush=True)
             return
-        if not sys.stdin.isatty() or not sys.stdout.isatty():
-            return
-        try:
-            readline.parse_and_bind("tab: complete")
-            readline.set_completer_delims(" \t")
-            readline.set_completer(self._complete)
-        except Exception:
-            return
-        self._readline = readline
+        with self._lock:
+            if self._editing:
+                sys.stdout.write("\r\x1b[K" + text + "\n")
+                self._redraw_locked()
+            else:
+                sys.stdout.write("\n" + text + "\n")
+                sys.stdout.flush()
 
-    def _complete(self, text: str, state: int) -> str | None:
+    def _setup_raw(self) -> bool:
         try:
-            agent_refs = list(self._agent_refs_provider())
-        except Exception:
-            agent_refs = []
+            import termios
+        except ImportError:
+            return False
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            return False
         try:
-            buffer = self._readline.get_line_buffer() if self._readline else text
+            attrs = termios.tcgetattr(sys.stdin.fileno())
+            new = termios.tcgetattr(sys.stdin.fileno())
+            new[3] &= ~(termios.ICANON | termios.ECHO | termios.ISIG)
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, new)
         except Exception:
-            buffer = text
+            return False
+        self._old_attrs = attrs
+        self._raw = True
+        atexit.register(self._restore_terminal)
+        return True
+
+    def _restore_terminal(self) -> None:
+        if self._old_attrs is None:
+            return
+        with contextlib.suppress(Exception):
+            import termios
+
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, self._old_attrs)
+        self._old_attrs = None
+
+    def _redraw_locked(self) -> None:
+        line = PROMPT + self._editor.text
+        tail = len(self._editor.text) - self._editor.cursor
+        sys.stdout.write("\r\x1b[K" + line)
+        if tail:
+            sys.stdout.write(f"\x1b[{tail}D")
+        sys.stdout.flush()
+
+    def _complete_locked(self) -> None:
+        listing = self._editor.complete()
+        if listing:
+            sys.stdout.write("\n" + listing + "\n")
+        self._redraw_locked()
+
+    def _read_escape(self, stdin) -> str:
+        """Lee una secuencia de escape completa (o lo que este disponible)."""
+        fd = stdin.fileno()
+        parts = b""
+        for _ in range(7):
+            try:
+                ready, _, _ = select.select([fd], [], [], 0.03)
+            except (OSError, ValueError):
+                break
+            if not ready:
+                break
+            parts += stdin.read(1)
+        return parts.decode("ascii", "replace")
+
+    def _handle_escape_locked(self, stdin) -> None:
+        seq = self._read_escape(stdin)
+        editor = self._editor
+        if seq == "[A":
+            editor.history_up()
+        elif seq == "[B":
+            editor.history_down()
+        elif seq == "[C":
+            editor.move_right()
+        elif seq == "[D":
+            editor.move_left()
+        elif seq in ("[H", "OH", "[1~"):
+            editor.home()
+        elif seq in ("[F", "OF", "[4~"):
+            editor.end()
+        elif seq == "[3~":
+            editor.delete_forward()
+        self._redraw_locked()
+
+    def _read_line_raw(self, stdin) -> str | None:
+        """Lee una linea en modo crudo; devuelve None en EOF (Ctrl+D en linea vacia)."""
+        with self._lock:
+            self._editing = True
+            self._editor.reset()
+            self._redraw_locked()
+        while True:
+            chunk = stdin.read(1)
+            if not chunk:  # EOF real
+                with self._lock:
+                    self._editing = False
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                return None
+            if chunk in (b"\n", b"\r"):
+                with self._lock:
+                    self._editing = False
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                line = self._editor.text
+                self._editor.commit_history()
+                return line
+            if chunk == b"\x03":  # Ctrl+C: limpia la linea (no apaga el servidor)
+                with self._lock:
+                    self._editor.clear_line()
+                    self._redraw_locked()
+                continue
+            if chunk == b"\x04":  # Ctrl+D
+                if not self._editor.text:
+                    with self._lock:
+                        self._editing = False
+                        sys.stdout.write("\n")
+                        sys.stdout.flush()
+                    return None
+                continue
+            if chunk in (b"\x7f", b"\x08"):  # Backspace
+                with self._lock:
+                    self._editor.backspace()
+                    self._redraw_locked()
+                continue
+            if chunk == b"\t":  # Tab
+                with self._lock:
+                    self._complete_locked()
+                continue
+            if chunk == b"\x1b":  # Escape: flechas, Home/End, Supr
+                with self._lock:
+                    self._handle_escape_locked(stdin)
+                continue
+            if 0x20 <= chunk[0] <= 0x7E or chunk[0] >= 0x80:
+                char = chunk.decode("utf-8", "replace")
+                with self._lock:
+                    self._editor.insert(char)
+                    self._redraw_locked()
+
+    def _push(self, line: str | None) -> None:
         try:
-            options = completion_options(buffer, agent_refs, text)
-        except Exception:
-            options = []
-        if state < len(options):
-            return options[state]
-        return None
+            self._loop.call_soon_threadsafe(self._queue.put_nowait, line)
+        except RuntimeError:
+            pass
 
     def _read_loop(self) -> None:
-        self._setup_readline()
+        if not self._setup_raw():
+            self._read_loop_plain()
+            return
+        stdin = sys.stdin.buffer
         while True:
             self._resume.wait()
             self._resume.clear()
-            eof = False
-            line = ""
+            line = self._read_line_raw(stdin)
+            if line is None:
+                self._restore_terminal()
+                self._push(None)
+                return
+            self._push(line)
+
+    def _read_loop_plain(self) -> None:
+        while True:
+            self._resume.wait()
+            self._resume.clear()
             try:
-                if self._readline is not None:
-                    line = input(PROMPT)
-                    if line.strip():
-                        with contextlib.suppress(Exception):
-                            self._readline.add_history(line)
-                else:
-                    print(PROMPT, end="", flush=True)
-                    line = sys.stdin.readline()
-                    if not line:
-                        eof = True
-            except EOFError:
-                eof = True
+                print(PROMPT, end="", flush=True)
+                line = sys.stdin.readline()
             except Exception:
                 line = ""
-            try:
-                self._loop.call_soon_threadsafe(
-                    self._queue.put_nowait, None if eof else line
-                )
-            except RuntimeError:
+            if not line:
+                self._push(None)
                 return
-            if eof:
-                return
+            self._push(line)
 
     async def readline(self) -> str | None:
         return await self._queue.get()
@@ -314,13 +556,18 @@ class Console:
         self.config = config
         self.after_delay = after_delay
         self.selected: AgentConnection | None = None
+        self._reader: _StdinReader | None = None
 
     def event(self, text: str) -> None:
-        print(f"\n{text}", flush=True)
+        if self._reader is not None:
+            self._reader.print_event(text)
+        else:
+            print(f"\n{text}", flush=True)
 
     async def run(self) -> None:
         self._print_banner()
         reader = _StdinReader(asyncio.get_running_loop(), self._agent_refs)
+        self._reader = reader
         reader.start()
         while True:
             line = await reader.readline()
@@ -404,6 +651,8 @@ class Console:
         print("   clear                     limpia la pantalla")
         print("   exit                      apaga el servidor")
         print("   Ctrl+B  D                 salir de la consola sin apagar el C2 (detach de tmux)")
+        print("   Ctrl+C                    borra la linea actual (no apaga el servidor)")
+        print("   Ctrl+D                    en linea vacia, apaga el servidor")
         print(" ejemplo rapido de una sesion:")
         print("   list                                     # ver los zombies conectados")
         print("   select 0                                 # elegir el zombie #0")
