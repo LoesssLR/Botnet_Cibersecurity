@@ -271,6 +271,8 @@ class _StdinReader:
         while True:
             self._resume.wait()
             self._resume.clear()
+            eof = False
+            line = ""
             try:
                 if self._readline is not None:
                     line = input(PROMPT)
@@ -280,13 +282,19 @@ class _StdinReader:
                 else:
                     print(PROMPT, end="", flush=True)
                     line = sys.stdin.readline()
+                    if not line:
+                        eof = True
+            except EOFError:
+                eof = True
             except Exception:
                 line = ""
             try:
-                self._loop.call_soon_threadsafe(self._queue.put_nowait, line if line else None)
+                self._loop.call_soon_threadsafe(
+                    self._queue.put_nowait, None if eof else line
+                )
             except RuntimeError:
                 return
-            if not line:
+            if eof:
                 return
 
     async def readline(self) -> str | None:
