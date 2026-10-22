@@ -292,7 +292,11 @@ Para practicar sin el servidor víctima basta cualquier HTTP local:
    resuelve el `future`. El timeout es 10 s, y para `load` se calcula
    `duration + 20 s` para esperar la prueba completa.
 3. Los eventos (altas/bajas/reconexiones) se imprimen en vivo desde `manager.py`
-   hacia la consola, que lee `stdin` en un hilo daemon (cierre limpio con EOF o Ctrl+C).
+   hacia la consola, que lee `stdin` en un hilo daemon (cierre limpio con EOF
+   (`Ctrl+D`) o `exit`).
+   Los handshakes fallidos (escáneres de internet que no hablan el protocolo) se
+   registran con detalle en `logs/c2.log` y en la consola solo se publica un
+   resumen cada 30 s (ej: `[!] 7 handshakes fallidos en los ultimos 30 s`).
 4. La inundación lanza K workers asyncio por agente con fecha límite; cada worker
    abre conexión, envía `GET` con `Connection: close`, lee la respuesta y cierra.
    El agente devuelve `{sent, errors, rps, duration_s}` — sin firma ni reconocimiento

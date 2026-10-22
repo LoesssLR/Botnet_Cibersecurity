@@ -98,6 +98,27 @@ class ManagerAuthTests(unittest.IsolatedAsyncioTestCase):
                     writer.close()
             await manager.stop()
 
+    async def test_handshakes_fallidos_se_resumen_en_consola(self):
+        events: list[str] = []
+        manager = AgentManager("127.0.0.1", 0, on_event=events.append, handshake_summary_interval=0.2)
+        await manager.start()
+        writers = []
+        try:
+            for _ in range(3):
+                reader, writer = await asyncio.open_connection("127.0.0.1", manager.port)
+                writers.append(writer)
+                writer.write(b"basura que no es json\n")
+                await writer.drain()
+            await wait_for(lambda: any("handshake" in event for event in events), timeout=3)
+            summaries = [event for event in events if "handshake" in event]
+            self.assertEqual(len(summaries), 1)
+            self.assertIn("3 handshakes fallidos", summaries[0])
+            self.assertNotIn("127.0.0.1:", summaries[0])  # sin detalle por linea
+        finally:
+            for writer in writers:
+                writer.close()
+            await manager.stop()
+
 
 if __name__ == "__main__":
     unittest.main()

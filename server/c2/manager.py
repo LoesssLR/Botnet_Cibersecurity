@@ -15,6 +15,7 @@ from .protocol import encode, read_message
 log = logging.getLogger("c2.manager")
 
 HANDSHAKE_TIMEOUT = 10.0
+HANDSHAKE_SUMMARY_INTERVAL = 30.0
 MAX_CONNECTIONS = 200
 MAX_AGENT_ID_LEN = 64
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)")
@@ -44,17 +45,21 @@ class AgentManager:
         shared_secret: str = "",
         on_event: Callable[[str], None] | None = None,
         max_connections: int = MAX_CONNECTIONS,
+        handshake_summary_interval: float = HANDSHAKE_SUMMARY_INTERVAL,
     ) -> None:
         self.bind_host = bind_host
         self.port = port
         self.shared_secret = shared_secret
         self.on_event = on_event
         self.max_connections = max_connections
+        self.handshake_summary_interval = handshake_summary_interval
         self.started_at = time.monotonic()
         self.total_connections = 0
         self._active_connections = 0
         self._agents: dict[str, AgentConnection] = {}
         self._server: asyncio.Server | None = None
+        self._handshake_failures = 0
+        self._summary_task: asyncio.Task | None = None
 
     @property
     def agents(self) -> list[AgentConnection]:
@@ -83,11 +88,17 @@ class AgentManager:
         self.port = self._server.sockets[0].getsockname()[1]
         log.info("escuchando en %s:%s", self.bind_host, self.port)
         self._emit(f"servidor escuchando en {self.bind_host}:{self.port}")
+        self._summary_task = asyncio.create_task(self._handshake_summary_loop())
         if not self.shared_secret:
             log.warning("C2_SHARED_SECRET vacio: la autenticacion esta deshabilitada, cualquier agente puede registrarse")
             self._emit("[!] C2_SHARED_SECRET vacio: la autenticacion esta deshabilitada (solo para laboratorio)")
 
     async def stop(self) -> None:
+        if self._summary_task is not None:
+            self._summary_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._summary_task
+            self._summary_task = None
         if self._server is not None:
             self._server.close()
         for agent in list(self._agents.values()):
@@ -97,6 +108,19 @@ class AgentManager:
         if self._server is not None:
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(self._server.wait_closed(), timeout=3)
+
+    async def _handshake_summary_loop(self) -> None:
+        """Publica en la consola un resumen periodico de handshakes fallidos."""
+        while True:
+            await asyncio.sleep(self.handshake_summary_interval)
+            failures, self._handshake_failures = self._handshake_failures, 0
+            if failures:
+                plural = "s" if failures != 1 else ""
+                interval = int(self.handshake_summary_interval)
+                self._emit(
+                    f"[!] {failures} handshake{plural} fallido{plural} en los ultimos "
+                    f"{interval} s (detalle en logs/c2.log)"
+                )
 
     async def broadcast(self, name: str, args: dict | None = None, timeout: float = 10.0):
         agents = self.agents
@@ -175,8 +199,8 @@ class AgentManager:
             log.info("agente conectado: %s desde %s", agent.agent_id, peer_str)
             await self._read_loop(agent)
         except (asyncio.TimeoutError, ValueError) as exc:
+            self._handshake_failures += 1
             log.warning("handshake fallido desde %s: %s", peer_str, exc)
-            self._emit(f"[!] handshake fallido desde {peer_str}: {exc}")
         except (ConnectionError, asyncio.IncompleteReadError):
             pass
         finally:
