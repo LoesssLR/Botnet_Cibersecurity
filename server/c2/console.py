@@ -417,9 +417,8 @@ class _StdinReader:
             sys.stdout.write("\n" + listing + "\n")
         self._redraw_locked()
 
-    def _read_escape(self, stdin) -> str:
+    def _read_escape(self, fd: int) -> str:
         """Lee una secuencia de escape completa (o lo que este disponible)."""
-        fd = stdin.fileno()
         parts = b""
         for _ in range(7):
             try:
@@ -428,11 +427,14 @@ class _StdinReader:
                 break
             if not ready:
                 break
-            parts += stdin.read(1)
+            try:
+                parts += os.read(fd, 1)
+            except OSError:
+                break
         return parts.decode("ascii", "replace")
 
-    def _handle_escape_locked(self, stdin) -> None:
-        seq = self._read_escape(stdin)
+    def _handle_escape_locked(self, fd: int) -> None:
+        seq = self._read_escape(fd)
         editor = self._editor
         if seq == "[A":
             editor.history_up()
@@ -450,14 +452,17 @@ class _StdinReader:
             editor.delete_forward()
         self._redraw_locked()
 
-    def _read_line_raw(self, stdin) -> str | None:
+    def _read_line_raw(self, fd: int) -> str | None:
         """Lee una linea en modo crudo; devuelve None en EOF (Ctrl+D en linea vacia)."""
         with self._lock:
             self._editing = True
             self._editor.reset()
             self._redraw_locked()
         while True:
-            chunk = stdin.read(1)
+            try:
+                chunk = os.read(fd, 1)
+            except OSError:
+                chunk = b""
             if not chunk:  # EOF real
                 with self._lock:
                     self._editing = False
@@ -496,7 +501,7 @@ class _StdinReader:
                 continue
             if chunk == b"\x1b":  # Escape: flechas, Home/End, Supr
                 with self._lock:
-                    self._handle_escape_locked(stdin)
+                    self._handle_escape_locked(fd)
                 continue
             if 0x20 <= chunk[0] <= 0x7E or chunk[0] >= 0x80:
                 char = chunk.decode("utf-8", "replace")
@@ -514,11 +519,11 @@ class _StdinReader:
         if not self._setup_raw():
             self._read_loop_plain()
             return
-        stdin = sys.stdin.buffer
+        fd = sys.stdin.fileno()
         while True:
             self._resume.wait()
             self._resume.clear()
-            line = self._read_line_raw(stdin)
+            line = self._read_line_raw(fd)
             if line is None:
                 self._restore_terminal()
                 self._push(None)
