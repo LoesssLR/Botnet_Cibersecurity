@@ -115,6 +115,18 @@ class CompletionOptionsTests(unittest.TestCase):
         self.assertIn("ping", options)
         self.assertIn("select", options)
 
+    def test_prefijo_filtra_las_opciones(self):
+        options = completion_options("pi", [], "pi")
+        self.assertEqual(options, ["ping"])
+
+    def test_prefijo_subcomando_load(self):
+        options = completion_options("broadcast lo", [], "lo")
+        self.assertEqual(options, ["load"])
+
+    def test_prefijo_de_agente(self):
+        options = completion_options("select zo", ["0", "zombie-01", "zombie-02"], "zo")
+        self.assertEqual(options, ["zombie-01", "zombie-02"])
+
     def test_select_ofrece_indices_e_ids_de_agentes(self):
         options = completion_options("select ", ["0", "1", "zombie-01", "zombie-02"])
         self.assertEqual(options, ["0", "1", "zombie-01", "zombie-02"])

@@ -172,32 +172,38 @@ def _parse_command(rest: list[str]) -> tuple[str, dict]:
     return name, args
 
 
-def completion_options(buffer: str, agent_refs: list[str]) -> list[str]:
+def completion_options(buffer: str, agent_refs: list[str], text: str = "") -> list[str]:
     """Opciones de autocompletado segun el contenido actual de la linea.
 
     `buffer` es el texto de la linea sin el prompt; `agent_refs` son los
-    indices e ids de los agentes conectados (ej: ["0", "zombie-01"]).
+    indices e ids de los agentes conectados (ej: ["0", "zombie-01"]); `text`
+    es la palabra que se esta completando (filtra por prefijo).
     """
     parts = buffer.split()
     trailing = buffer.endswith(" ")
     if not parts or (len(parts) == 1 and not trailing):
-        return list(CONSOLE_COMMANDS)
-    head = parts[0]
-    if head in ("select", "ping", "kick"):
-        options = list(agent_refs)
-        if head == "ping":
-            options.append("all")
-        return options
-    if head in ("send", "broadcast"):
-        if len(parts) == 1:
-            return list(AGENT_SUBCOMMANDS)
-        if parts[1] == "load" and (trailing or len(parts) > 2):
-            used = parts[2:]
-            return [key for key in LOAD_KEYS if not any(part.startswith(key) for part in used)]
-        return []
-    if head in ("metrics", "metricas"):
-        return ["antes", "durante", "despues", "manual"]
-    return []
+        options = list(CONSOLE_COMMANDS)
+    else:
+        head = parts[0]
+        if head in ("select", "ping", "kick"):
+            options = list(agent_refs)
+            if head == "ping":
+                options.append("all")
+        elif head in ("send", "broadcast"):
+            if len(parts) == 1:
+                options = list(AGENT_SUBCOMMANDS)
+            elif len(parts) == 2 and not trailing:
+                options = list(AGENT_SUBCOMMANDS)
+            elif parts[1] == "load" and (trailing or len(parts) > 2):
+                used = parts[2:]
+                options = [key for key in LOAD_KEYS if not any(part.startswith(key) for part in used)]
+            else:
+                options = []
+        elif head in ("metrics", "metricas"):
+            options = ["antes", "durante", "despues", "manual"]
+        else:
+            options = []
+    return [option for option in options if option.startswith(text)]
 
 
 class _StdinReader:
@@ -218,9 +224,15 @@ class _StdinReader:
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
         self._agent_refs_provider = agent_refs_provider or (lambda: [])
         self._readline = None
+        self._resume = threading.Event()
+        self._resume.set()
 
     def start(self) -> None:
         self._thread.start()
+
+    def allow_prompt(self) -> None:
+        """Autoriza al hilo lector a mostrar el siguiente prompt."""
+        self._resume.set()
 
     def _setup_readline(self) -> None:
         try:
@@ -257,13 +269,16 @@ class _StdinReader:
     def _read_loop(self) -> None:
         self._setup_readline()
         while True:
+            self._resume.wait()
+            self._resume.clear()
             try:
                 if self._readline is not None:
-                    line = input("")
+                    line = input(PROMPT)
                     if line.strip():
                         with contextlib.suppress(Exception):
                             self._readline.add_history(line)
                 else:
+                    print(PROMPT, end="", flush=True)
                     line = sys.stdin.readline()
             except Exception:
                 line = ""
@@ -300,18 +315,19 @@ class Console:
         reader = _StdinReader(asyncio.get_running_loop(), self._agent_refs)
         reader.start()
         while True:
-            print(PROMPT, end="", flush=True)
             line = await reader.readline()
             if line is None:
                 print()
                 break
             line = line.strip()
             if not line:
+                reader.allow_prompt()
                 continue
             try:
                 parts = shlex.split(line)
             except ValueError as exc:
                 print(f"entrada invalida: {exc}")
+                reader.allow_prompt()
                 continue
             command = parts[0].lower()
             rest = parts[1:]
@@ -321,6 +337,7 @@ class Console:
                 await self._dispatch(command, rest)
             except Exception as exc:
                 print(f"error: {exc}")
+            reader.allow_prompt()
 
     def _agent_refs(self) -> list[str]:
         agents = self.manager.agents
