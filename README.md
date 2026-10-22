@@ -198,6 +198,13 @@ agente real conectado, inundación con métricas por zombie y agregadas, y cierr
 | `status` | Uptime, agentes y conexiones totales |
 | `clear` / `exit` | Limpia pantalla / cierra la sesión actual (bajo systemd el servicio la reinicia) |
 
+La consola autocompleta con `Tab` (comandos, índices e ids de agentes,
+subcomandos de `send`/`broadcast`, claves de `load` y etiquetas de `metrics`)
+y conserva historial con las flechas arriba/abajo cuando se ejecuta en una
+terminal real (tmux/SSH); en Windows o con stdin redirigido usa la lectura
+simple sin edición. Para salir de la consola **sin** apagar el C2 (dentro de
+tmux) se usa `Ctrl+B` y luego `D` (detach); `exit` sí apaga el servidor.
+
 `kick` cierra la conexión y avisa al agente con un frame `bye`; si el agente es
 externo y tiene reconexión propia, puede volver. Para expulsarlo de forma
 permanente usar `send stop` (el agente de prueba termina con código 0 y no

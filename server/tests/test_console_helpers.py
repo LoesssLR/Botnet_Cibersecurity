@@ -15,6 +15,7 @@ from c2.console import (
     _fmt_duration,
     _parse_command,
     _redact_url,
+    completion_options,
 )
 
 
@@ -98,3 +99,55 @@ class RedactUrlTests(unittest.TestCase):
 
     def test_url_invalida_se_devuelve_tal_cual(self):
         self.assertEqual(_redact_url("no-es-una-url"), "no-es-una-url")
+
+
+class CompletionOptionsTests(unittest.TestCase):
+    def test_linea_vacia_ofrece_todos_los_comandos(self):
+        options = completion_options("", [])
+        self.assertIn("list", options)
+        self.assertIn("broadcast", options)
+        self.assertIn("exit", options)
+        self.assertIn("?", options)
+
+    def test_primera_palabra_incompleta_ofrece_comandos(self):
+        # el filtrado por prefijo lo aplica readline; aqui solo se valida el contexto
+        options = completion_options("pi", [])
+        self.assertIn("ping", options)
+        self.assertIn("select", options)
+
+    def test_select_ofrece_indices_e_ids_de_agentes(self):
+        options = completion_options("select ", ["0", "1", "zombie-01", "zombie-02"])
+        self.assertEqual(options, ["0", "1", "zombie-01", "zombie-02"])
+
+    def test_ping_ofrece_all_ademas_de_agentes(self):
+        options = completion_options("ping ", ["0", "zombie-01"])
+        self.assertIn("all", options)
+        self.assertIn("zombie-01", options)
+
+    def test_kick_no_ofrece_all(self):
+        self.assertNotIn("all", completion_options("kick ", ["0"]))
+
+    def test_broadcast_ofrece_subcomandos(self):
+        options = completion_options("broadcast ", [])
+        self.assertIn("load", options)
+        self.assertIn("ping", options)
+
+    def test_broadcast_load_ofrece_claves(self):
+        options = completion_options("broadcast load ", [])
+        self.assertEqual(options, ["target=", "duration=", "concurrency="])
+
+    def test_broadcast_load_omite_claves_ya_usadas(self):
+        options = completion_options("broadcast load duration=30 ", [])
+        self.assertEqual(options, ["target=", "concurrency="])
+
+    def test_send_load_ofrece_claves(self):
+        options = completion_options("send load target=", [])
+        self.assertEqual(options, ["duration=", "concurrency="])
+
+    def test_metrics_ofrece_etiquetas(self):
+        options = completion_options("metrics ", [])
+        self.assertEqual(options, ["antes", "durante", "despues", "manual"])
+
+    def test_comando_sin_completar_no_devuelve_opciones(self):
+        self.assertEqual(completion_options("status ", []), [])
+        self.assertEqual(completion_options("help ", []), [])

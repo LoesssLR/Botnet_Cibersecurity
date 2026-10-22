@@ -197,9 +197,15 @@ class AgentManager:
             agent.touch()
             message_type = message.get("type")
             if message_type in ("result", "pong"):
-                agent.resolve(message)
+                if not agent.resolve(message):
+                    log.info(
+                        "respuesta no correlacionada de %s: id=%r type=%s",
+                        agent.agent_id,
+                        message.get("id"),
+                        message_type,
+                    )
             elif message_type != "heartbeat":
-                log.debug("mensaje ignorado de %s: %s", agent.agent_id, message_type)
+                log.info("mensaje ignorado de %s: type=%s", agent.agent_id, message_type)
 
     def _emit(self, text: str) -> None:
         if self.on_event is not None:

