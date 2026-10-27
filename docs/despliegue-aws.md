@@ -120,10 +120,13 @@ Para que el C2 consuma métricas vía API hay dos rutas:
   2. En la víctima: `sudo /etc/netdata/edit-config netdata.conf` y agregar en la
      sección `[web]` la IP del botnet:
      `allow connections from = localhost 172.31.* <IP_ELASTICA_BOTNET>`
-  3. `sudo systemctl restart netdata`.
-  4. Desde el C2 verificar:
+  3. Verificar el bind de Netdata: `grep -n 'bind to' /etc/netdata/netdata.conf`.
+     Si quedó en `bind to = 127.0.0.1` las conexiones externas caen en **timeout**
+     (ni siquiera se llega al allowlist); cambiarlo a `bind to = *`.
+  4. `sudo systemctl restart netdata`.
+  5. Desde el C2 verificar:
      `curl -s 'http://<IP_ELASTICA_VICTIMA>:19999/api/v1/info' | head -c 200`
-     (debe devolver JSON, no 403).
+     (debe devolver JSON, no 403 ni timeout).
 
 Verificación desde el propio C2 antes de la demo:
 
