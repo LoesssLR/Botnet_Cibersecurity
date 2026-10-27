@@ -304,7 +304,8 @@ Para practicar sin el servidor víctima basta cualquier HTTP local:
    como tarea en segundo plano, así que `ping`/`stop` siguen funcionando durante la
    prueba y un `stop` o la caída del C2 cancelan la inundación de inmediato.
 5. Métricas: se consultan tres charts de la API v1 de Netdata —
-   `system.cpu` (100 − idle), `system.ram` (used / total) y `system.net`
+   `system.cpu` (100 − idle; en Netdata v2, que no trae la dimensión `idle`,
+   se suman las dimensiones de uso), `system.ram` (used / total) y `system.net`
    (suma de dimensiones) — con timeout, ventana corta de 10 s y las tres consultas
    en paralelo; un chart que falla no bloquea a los demás.
 6. El apagado cierra primero los agentes y luego espera `wait_closed()` con un

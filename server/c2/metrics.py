@@ -59,8 +59,14 @@ def compute_metrics(cpu: dict | None, ram: dict | None, net: dict | None) -> dic
     result = {"cpu_pct": None, "ram_pct": None, "net_kbit_s": None}
 
     cpu_values = _numeric_values(cpu)
-    if "idle" in cpu_values:
-        result["cpu_pct"] = round(100 - cpu_values["idle"], 1)
+    if cpu_values:
+        if "idle" in cpu_values:
+            # Netdata v1: la dimension idle es el tiempo inactivo
+            result["cpu_pct"] = round(100 - cpu_values["idle"], 1)
+        else:
+            # Netdata v2: system.cpu no trae idle; las dimensiones de uso
+            # (user, system, nice, iowait, ...) suman la utilizacion total
+            result["cpu_pct"] = round(sum(cpu_values.values()), 1)
 
     ram_values = _numeric_values(ram)
     total = sum(ram_values.values())

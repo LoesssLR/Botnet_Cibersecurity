@@ -42,11 +42,12 @@ class ComputeMetricsTests(unittest.TestCase):
         result = compute_metrics(None, {"used": 0.0, "free": 0.0}, None)
         self.assertIsNone(result["ram_pct"])
 
-    def test_cpu_sin_dimension_idle_no_calcula(self):
-        result = compute_metrics({"user": 10.0}, None, None)
-        self.assertIsNone(result["cpu_pct"])
+    def test_cpu_sin_idle_suma_dimensiones_de_uso(self):
+        # Netdata v2: system.cpu no trae idle; las dimensiones de uso suman la utilizacion
+        result = compute_metrics({"user": 10.0, "system": 3.5}, None, None)
+        self.assertEqual(result["cpu_pct"], 13.5)
 
     def test_valores_no_numericos_se_ignoran(self):
         cpu = {"idle": "n/a", "user": 5.0}
         result = compute_metrics(cpu, None, None)
-        self.assertIsNone(result["cpu_pct"])
+        self.assertEqual(result["cpu_pct"], 5.0)
