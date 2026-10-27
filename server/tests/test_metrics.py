@@ -47,6 +47,11 @@ class ComputeMetricsTests(unittest.TestCase):
         result = compute_metrics({"user": 10.0, "system": 3.5}, None, None)
         self.assertEqual(result["cpu_pct"], 13.5)
 
+    def test_net_v2_sent_negativo_suma_valores_absolutos(self):
+        # Netdata v2: system.net trae received positivo y sent negativo
+        result = compute_metrics(None, None, {"received": 8204.6, "sent": -17673.8})
+        self.assertEqual(result["net_kbit_s"], 25878.4)
+
     def test_valores_no_numericos_se_ignoran(self):
         cpu = {"idle": "n/a", "user": 5.0}
         result = compute_metrics(cpu, None, None)

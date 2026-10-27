@@ -75,7 +75,9 @@ def compute_metrics(cpu: dict | None, ram: dict | None, net: dict | None) -> dic
 
     net_values = _numeric_values(net)
     if net_values:
-        result["net_kbit_s"] = round(sum(net_values.values()), 1)
+        # Netdata v2 reporta "sent" en negativo (chart received/sent); el
+        # total de trafico es la suma de valores absolutos de las dimensiones
+        result["net_kbit_s"] = round(sum(abs(value) for value in net_values.values()), 1)
 
     return result
 

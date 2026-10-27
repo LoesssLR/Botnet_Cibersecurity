@@ -306,8 +306,9 @@ Para practicar sin el servidor víctima basta cualquier HTTP local:
 5. Métricas: se consultan tres charts de la API v1 de Netdata —
    `system.cpu` (100 − idle; en Netdata v2, que no trae la dimensión `idle`,
    se suman las dimensiones de uso), `system.ram` (used / total) y `system.net`
-   (suma de dimensiones) — con timeout, ventana corta de 10 s y las tres consultas
-   en paralelo; un chart que falla no bloquea a los demás.
+   (suma de valores absolutos; en v2 `sent` viene en negativo) — con timeout,
+   ventana corta de 10 s y las tres consultas en paralelo; un chart que falla
+   no bloquea a los demás.
 6. El apagado cierra primero los agentes y luego espera `wait_closed()` con un
    timeout de 3 s (evita el bloqueo de `Server.wait_closed()` de Python 3.12+
    cuando hay conexiones activas). Ese caso se encontró durante las pruebas en vivo
