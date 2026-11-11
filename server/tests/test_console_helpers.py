@@ -128,9 +128,9 @@ class CompletionOptionsTests(unittest.TestCase):
         options = completion_options("select zo", ["0", "zombie-01", "zombie-02"], "zo")
         self.assertEqual(options, ["zombie-01", "zombie-02"])
 
-    def test_select_ofrece_indices_e_ids_de_agentes(self):
+    def test_select_ofrece_indices_ids_y_all(self):
         options = completion_options("select ", ["0", "1", "zombie-01", "zombie-02"])
-        self.assertEqual(options, ["0", "1", "zombie-01", "zombie-02"])
+        self.assertEqual(options, ["0", "1", "zombie-01", "zombie-02", "all"])
 
     def test_ping_ofrece_all_ademas_de_agentes(self):
         options = completion_options("ping ", ["0", "zombie-01"])

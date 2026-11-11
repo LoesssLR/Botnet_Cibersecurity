@@ -15,10 +15,11 @@ y después de cada prueba).
 > y equipos de prueba del laboratorio. El servidor C2 se despliega como servicio
 > persistente en la instancia del equipo (arranque automático, reinicio del
 > proceso ante fallos, sin ventanas, administrado por SSH y consola) y todo el
-> código usa solo la biblioteca estándar de Python. La inundación es acotada, con
-> objetivo explícito (`duration` ≤ 120 s, `concurrency` ≤ 200 por agente, solo
-> `http://` y allowlist opcional), y no debe utilizarse fuera del alcance
-> autorizado del curso.
+> código usa solo la biblioteca estándar de Python. La inundación usa un
+> objetivo explícito (solo `http://` y allowlist opcional) y topes
+> configurables por `.env` (`FLOOD_MAX_DURATION_S` / `FLOOD_MAX_CONCURRENCY`,
+> defecto 120 s y 200 conexiones por agente; `0` quita el tope), y no debe
+> utilizarse fuera del alcance autorizado del curso.
 
 **Estado:** desplegado en AWS y validado en local (80 pruebas unitarias + prueba
 de humo + prueba en vivo). La conexión inversa del `.exe` del compañero ya se
@@ -189,7 +190,7 @@ agente real conectado, inundación con métricas por zombie y agregadas, y cierr
 | Comando | Efecto |
 |---|---|
 | `list` | Tabla de agentes: #, id, equipo, usuario, SO, dirección, conectado e idle |
-| `select <#\|id>` | Selecciona un agente (acepta índice, id exacto o prefijo único) |
+| `select <#\|id\|all>` | Selecciona un agente (acepta índice, id exacto o prefijo único); `select all` hace que `send`/`ping` vayan a todos |
 | `send <cmd> [k=v ...]` | Envía un comando al agente seleccionado |
 | `broadcast <cmd> [k=v ...]` | Envía un comando a todos los agentes |
 | `ping <#\|id\|all>` | Prueba de vida (comando `ping`) |
@@ -354,11 +355,12 @@ conteo de solicitudes correlacionados).
 
 - El `target` de la inundación debe indicarse explícitamente y es el servidor
   víctima del laboratorio (AWS propio). No hay objetivos por defecto.
-- Topes fijos aplicados por el servidor en `send load` y `broadcast load`:
-  `duration` ≤ 120 s, `concurrency` ≤ 200 por agente y solo `http://` con hostname
-  válido. Si `TARGET_HOST` está definido, el host debe coincidir (se exceptúan
-  `127.0.0.1`, `localhost` y `::1`); `TARGET_HTTP_PORT` se aplica si el target no
-  trae puerto.
+- Topes del servidor en `send load` y `broadcast load`: `duration` y
+  `concurrency` se limitan según `FLOOD_MAX_DURATION_S` y
+  `FLOOD_MAX_CONCURRENCY` (defecto 120 s / 200 por agente; `0` quita el tope)
+  y solo `http://` con hostname válido. Si `TARGET_HOST` está definido, el
+  host debe coincidir (se exceptúan `127.0.0.1`, `localhost` y `::1`);
+  `TARGET_HTTP_PORT` se aplica si el target no trae puerto.
 - El servidor C2 es estándar: protocolo documentado y sin ofuscación ni evasión;
   su persistencia es la de un servicio normal (systemd + tmux, sin ventanas) en la
   instancia del equipo. Si muere `tmux`, systemd no lo reinicia automáticamente.

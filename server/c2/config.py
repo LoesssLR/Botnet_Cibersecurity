@@ -51,6 +51,19 @@ def load_env_file(path: Path) -> None:
         os.environ.setdefault(key, _parse_value(value))
 
 
+def _parse_cap(raw_value: str, name: str) -> int | None:
+    """Parsea un tope de inundacion: vacio = sin configurar, 0 = sin tope."""
+    if not raw_value:
+        return None
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} debe ser un entero (0 = sin tope)") from exc
+    if value < 0:
+        raise ValueError(f"{name} debe ser 0 o mayor (0 = sin tope)")
+    return value
+
+
 @dataclass
 class Config:
     bind_host: str
@@ -61,6 +74,8 @@ class Config:
     data_dir: Path
     target_host: str = ""
     target_http_port: int | None = None
+    flood_max_duration: int | None = None
+    flood_max_concurrency: int | None = None
 
     @classmethod
     def load(cls) -> "Config":
@@ -89,4 +104,10 @@ class Config:
             data_dir=data_dir,
             target_host=os.environ.get("TARGET_HOST", "").strip(),
             target_http_port=target_http_port,
+            flood_max_duration=_parse_cap(
+                os.environ.get("FLOOD_MAX_DURATION_S", "").strip(), "FLOOD_MAX_DURATION_S"
+            ),
+            flood_max_concurrency=_parse_cap(
+                os.environ.get("FLOOD_MAX_CONCURRENCY", "").strip(), "FLOOD_MAX_CONCURRENCY"
+            ),
         )

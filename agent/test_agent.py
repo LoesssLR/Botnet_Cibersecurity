@@ -15,8 +15,23 @@ import urllib.parse
 
 HEARTBEAT_SECONDS = 10.0
 CONNECT_TIMEOUT = 5.0
-MAX_DURATION_S = 120
-MAX_CONCURRENCY = 200
+DEFAULT_MAX_DURATION_S = 120
+DEFAULT_MAX_CONCURRENCY = 200
+
+
+def _env_cap(name: str, default: int) -> int | None:
+    """Tope de inundacion desde el entorno: vacio usa el defecto, 0 lo quita."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+MAX_DURATION_S = _env_cap("FLOOD_MAX_DURATION_S", DEFAULT_MAX_DURATION_S)
+MAX_CONCURRENCY = _env_cap("FLOOD_MAX_CONCURRENCY", DEFAULT_MAX_CONCURRENCY)
 
 
 def encode(message: dict) -> bytes:
@@ -122,10 +137,18 @@ def parse_target(target: str) -> tuple[str, int, str]:
     return host, port, path
 
 
+def _bounded(value: int, maximum: int | None) -> int:
+    """Normaliza un valor de load: minimo 1 y tope solo si esta definido (> 0)."""
+    number = max(1, int(value))
+    if maximum is not None and maximum > 0:
+        number = min(number, maximum)
+    return number
+
+
 async def run_load(target: str, duration: int, concurrency: int) -> dict:
     host, port, path = parse_target(target)
-    duration = max(1, min(int(duration), MAX_DURATION_S))
-    concurrency = max(1, min(int(concurrency), MAX_CONCURRENCY))
+    duration = _bounded(duration, MAX_DURATION_S)
+    concurrency = _bounded(concurrency, MAX_CONCURRENCY)
     request = _build_request(host, path, port)
     deadline = time.monotonic() + duration
     stats = {"sent": 0, "errors": 0}
