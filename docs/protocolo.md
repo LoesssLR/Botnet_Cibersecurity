@@ -80,8 +80,9 @@ cierra de todos modos.
 
 ## Notas de integracion
 
-- El agente final (otro integrante) debe implementar `hello`, `heartbeat` y `result`
-  con este formato para integrarse con el servidor.
+- La implementación de referencia del agente final está en `troyano/`
+  (agente `.exe` con `hello`, `heartbeat`, `result`, reconexión y `load`).
+  Cualquier agente externo debe implementar este mismo contrato.
 - `agent_id` se sanea en el servidor: caracteres de control/ANSI se eliminan, los
   caracteres no seguros se reemplazan por `_` y la longitud maxima es 64. Conviene
   usar IDs simples como `zombie-01`.

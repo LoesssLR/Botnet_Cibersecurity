@@ -1,0 +1,9 @@
+Colocar aquí el instalador redistribuible de 7-Zip antes de compilar el
+instalador con Inno Setup:
+
+    installer/redist/7z-installer-x64.exe
+
+El instalador de 7-Zip se puede descargar de https://www.7-zip.org/.
+El binario NO se versiona en git (el repositorio ignora *.exe).
+Si no se incluye, desmarcar el componente "7-Zip" al compilar el setup
+(la página de componentes del asistente lo deja desmarcado por defecto).

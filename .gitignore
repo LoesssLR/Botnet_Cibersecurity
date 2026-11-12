@@ -14,6 +14,9 @@ build/
 dist/
 *.exe
 *.spec
+# Troyano (agente zombie): se versiona el spec de PyInstaller y el icono
+!troyano/pyinstaller/
+!troyano/pyinstaller/*.spec
 
 # Secretos y credenciales
 .env

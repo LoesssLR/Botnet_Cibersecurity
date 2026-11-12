@@ -21,11 +21,12 @@ y después de cada prueba).
 > defecto 120 s y 200 conexiones por agente; `0` quita el tope), y no debe
 > utilizarse fuera del alcance autorizado del curso.
 
-**Estado:** desplegado en AWS y validado en local (80 pruebas unitarias + prueba
-de humo + prueba en vivo). La conexión inversa del `.exe` del compañero ya se
-validó a nivel de `hello`; queda la prueba final de `load` desde ese `.exe` y
-guardar la evidencia para la exposición. Incluye servicio persistente para la
-instancia (`server/deploy/`).
+**Estado:** proyecto finalizado y expuesto (11/11/2026). El laboratorio se
+validó de punta a punta sobre AWS (C2 + zombies + inundación + métricas de
+Netdata); las instancias ya fueron eliminadas y este repositorio queda como
+evidencia documentada del trabajo, con el servidor C2, el agente de prueba y
+el troyano (`troyano/`). Incluye servicio persistente para la instancia
+(`server/deploy/`).
 
 ## 1. Datos del curso
 
@@ -69,6 +70,7 @@ deja un registro JSONL de CPU, RAM y red antes/durante/después, listo para el i
 | `server/c2/metrics.py` | API de Netdata: consulta y cálculo de CPU, RAM y red del objetivo |
 | `server/tests/` | Suite unitaria (`run_all.py`), prueba de humo de integración y 9 módulos de pruebas |
 | `agent/test_agent.py` | Agente de prueba (zombie simulado) que implementa el protocolo, el comando `load` y la reconexión automática (`--reconnect`) |
+| `troyano/` | Agente zombie definitivo (troyano `.exe`): código, icono, spec de PyInstaller, instalador Inno Setup y 53 pruebas (ver `troyano/README.md`) |
 | `server/deploy/botnet-c2.service` | Unidad systemd + tmux: servidor persistente (arranque automático, reinicio del proceso, sin ventanas; si muere tmux hay que reiniciar el servicio) |
 | `docs/protocolo.md` | Contrato de mensajes C2 ↔ agente (para integrar el `.exe` del compañero) |
 | `docs/arquitectura.md` | Componentes, flujos, puertos y especificaciones de AWS |
@@ -115,8 +117,14 @@ botnet/
 │       ├── test_load_contract.py    # Tipos, topes, allowlist y rechazo de load
 │       ├── test_manager_auth.py     # Secreto, saneamiento, límite de conexiones
 │       └── test_agent_lifecycle.py  # Cancelación de load, stop, bye y rechazo auth
-└── agent/
-    └── test_agent.py        # Agente de prueba (zombie simulado, solo laboratorio)
+├── agent/
+│   └── test_agent.py        # Agente de prueba (zombie simulado, solo laboratorio)
+└── troyano/                 # Agente zombie definitivo (troyano .exe) - ver troyano/README.md
+    ├── src/                 # Código del agente (hello, comandos, load, reconexión)
+    ├── assets/              # Icono y su generador (make_icon.py, solo stdlib)
+    ├── pyinstaller/         # Spec de PyInstaller + metadatos de versión del .exe
+    ├── installer/           # Instalador Inno Setup (nombre, icono, 7-Zip opcional)
+    └── tests/               # 53 pruebas
 ```
 
 ## 5. Requisitos y puesta en marcha local
@@ -147,7 +155,7 @@ permitir cualquier `http://` dentro del laboratorio.
 
 ## 6. Pruebas y calidad del código
 
-Suite unitaria (80 pruebas, sin dependencias externas, sin red externa; usa solo loopback):
+Suite unitaria (129 pruebas, sin dependencias externas, sin red externa; usa solo loopback):
 
 ```bash
 python server/tests/run_all.py
@@ -156,7 +164,7 @@ python server/tests/run_all.py
 Resultado esperado:
 
 ```text
-Ran 80 tests in 0.55s
+Ran 129 tests in 0.55s
 
 OK
 ```
@@ -345,7 +353,7 @@ operación:
 | Acquire Infrastructure: Botnet | T1583.005 | `server/c2/` + `agent/test_agent.py` | Se despliega la infraestructura de un botnet de laboratorio (servidor C2 + hosts gestionados) para ejercitar su administración remota. |
 | Non-Application Layer Protocol | T1095 | `protocol.py`, `manager.py` | Canal de mando con protocolo propio JSON-delimitado sobre TCP crudo (no HTTP/HTTPS estándar). |
 | Network Denial of Service | T1498 | Comando `load` | Inundación HTTP directa, acotada y autorizada contra el servidor víctima del laboratorio. |
-| Command and Scripting Interpreter: Python | T1059.006 | `agent/test_agent.py` | El agente se ejecuta como script de Python; el entregable del compañero empaqueta un equivalente `.exe`. |
+| Command and Scripting Interpreter: Python | T1059.006 | `agent/test_agent.py`, `troyano/` | El agente se ejecuta como script de Python; el troyano se empaqueta como `.exe` (PyInstaller + Inno Setup). |
 
 Del lado defensivo, las métricas de Netdata y el registro JSONL representan la
 telemetría que permitiría a un analista evidenciar un T1498 en curso (CPU, red y
@@ -373,8 +381,9 @@ conteo de solicitudes correlacionados).
   prueba cancela cualquier `load` en curso al recibir `stop` o al perder el C2.
 - El archivo `.env` debe quedar con permisos `600` (`chmod 600 .env`), porque
   contiene el secreto compartido y la URL de Netdata.
-- Fuera de este repositorio quedan el troyano y el servidor víctima (entregables
-  de otros integrantes); este proyecto cubre solo la parte del servidor botnet.
+- El troyano (agente zombie) vive en `troyano/` con su instalador y su
+  documentación (versión de laboratorio para el portafolio); fuera de este
+  repositorio queda únicamente el servidor víctima.
 - Costos AWS: detener las instancias al terminar y mantener las IPs elásticas
   asociadas (o liberarlas).
 
@@ -429,3 +438,4 @@ Resumen (guía completa en [`docs/despliegue-aws.md`](docs/despliegue-aws.md)):
 - [Arquitectura del laboratorio](docs/arquitectura.md)
 - [Protocolo C2](docs/protocolo.md)
 - [Despliegue en AWS](docs/despliegue-aws.md)
+- [Troyano (agente zombie)](troyano/README.md)
