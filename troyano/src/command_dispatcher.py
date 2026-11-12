@@ -1,7 +1,7 @@
 """Despachador de comandos con lista de permitidos (whitelist)."""
 from __future__ import annotations
 
-from .commands import handle_command
+from commands import handle_command
 
 ALLOWED_COMMANDS = {"ping", "info", "echo", "stop"}
 

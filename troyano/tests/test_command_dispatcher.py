@@ -5,9 +5,9 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.command_dispatcher import dispatch_command
+from command_dispatcher import dispatch_command
 
 
 class TestCommandDispatcher(unittest.TestCase):

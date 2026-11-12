@@ -7,7 +7,7 @@ Reglas:
 """
 from __future__ import annotations
 
-from .config import RECONNECT_DELAY_S, RECONNECT_MAX_ATTEMPTS
+from config import RECONNECT_DELAY_S, RECONNECT_MAX_ATTEMPTS
 
 
 def reconnect_decision(event: dict, attempts: int = 0) -> dict:

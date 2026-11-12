@@ -7,11 +7,11 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.c2_client import EXIT_STOP, receive_messages
-from src.commands import handle_command
-from src.protocol import decode_message, encode_message
+from c2_client import EXIT_STOP, receive_messages
+from commands import handle_command
+from protocol import decode_message, encode_message
 
 
 async def _echo_handlers():

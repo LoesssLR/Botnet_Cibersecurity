@@ -13,10 +13,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 
-from .config import C2_HOST, C2_PORT
-from .identity import build_hello, build_heartbeat
-from .load_command import run_load
-from .protocol import decode_message, encode_message
+from config import C2_HOST, C2_PORT
+from identity import build_hello, build_heartbeat
+from load_command import run_load
+from protocol import decode_message, encode_message
 
 HEARTBEAT_INTERVAL = 10
 MAX_MESSAGE_SIZE = 65536
@@ -96,10 +96,11 @@ async def receive_messages(reader, writer, send_message, start_load, stop_load):
             print(f"Mensaje ignorado: {message_type}")
 
 
+from command_dispatcher import dispatch_command
+
+
 def dispatch_result(message: dict) -> dict:
     """Despacha un comando y devuelve su frame result."""
-    from .command_dispatcher import dispatch_command
-
     return dispatch_command(message)
 
 

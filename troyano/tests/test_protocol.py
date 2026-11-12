@@ -5,9 +5,9 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.protocol import MAX_MESSAGE_BYTES, decode_message, encode_message
+from protocol import MAX_MESSAGE_BYTES, decode_message, encode_message
 
 
 class TestProtocol(unittest.TestCase):

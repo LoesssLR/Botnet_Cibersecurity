@@ -5,9 +5,9 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.identity import build_heartbeat, build_hello
+from identity import build_heartbeat, build_hello
 
 
 class TestIdentity(unittest.TestCase):

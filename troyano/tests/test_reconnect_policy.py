@@ -5,9 +5,9 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.reconnect_policy import reconnect_decision
+from reconnect_policy import reconnect_decision
 
 
 class TestReconnectPolicy(unittest.TestCase):
@@ -33,7 +33,7 @@ class TestReconnectPolicy(unittest.TestCase):
         self.assertTrue(result["retry"])
 
     def test_maximo_intentos(self):
-        from src.config import DEFAULT_RECONNECT_ATTEMPTS
+        from config import DEFAULT_RECONNECT_ATTEMPTS
 
         result = reconnect_decision(
             {"type": "connection_lost"},

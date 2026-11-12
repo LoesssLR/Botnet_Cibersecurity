@@ -6,7 +6,7 @@ import platform
 import socket
 import time
 
-from .config import VERSION
+from config import VERSION
 
 
 def build_hello(agent_id: str, secret: str = "") -> dict:

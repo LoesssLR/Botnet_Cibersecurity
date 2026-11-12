@@ -6,9 +6,9 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from src.load_command import _as_int, _bounded, parse_target, run_load
+from load_command import _as_int, _bounded, parse_target, run_load
 
 
 class ParseTargetTests(unittest.TestCase):

