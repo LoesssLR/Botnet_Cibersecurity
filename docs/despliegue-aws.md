@@ -43,7 +43,7 @@ Crear dos grupos de seguridad en la VPC por defecto.
 1. EC2 → Elastic IPs → Allocate Elastic IP address.
 2. Asociarla a `botnet-c2`.
 3. Anotar la IP: es la dirección de conexión inversa que usarán los agentes
-   (y el `.exe` del compañero); el servidor C2 no necesita configurarla.
+   (y el `.exe` de `troyano/`); el servidor C2 no necesita configurarla.
 
 ## 4. Instancia del servidor víctima
 

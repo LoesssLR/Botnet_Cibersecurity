@@ -70,9 +70,9 @@ deja un registro JSONL de CPU, RAM y red antes/durante/después, listo para el i
 | `server/c2/metrics.py` | API de Netdata: consulta y cálculo de CPU, RAM y red del objetivo |
 | `server/tests/` | Suite unitaria (`run_all.py`), prueba de humo de integración y 9 módulos de pruebas |
 | `agent/test_agent.py` | Agente de prueba (zombie simulado) que implementa el protocolo, el comando `load` y la reconexión automática (`--reconnect`) |
-| `troyano/` | Agente zombie definitivo (troyano `.exe`): código, icono, spec de PyInstaller, instalador Inno Setup y 53 pruebas (ver `troyano/README.md`) |
+| `troyano/` | Agente zombie definitivo (troyano `.exe`): código, icono, spec de PyInstaller, instalador Inno Setup disfrazado de 7-Zip y 53 pruebas (ver `troyano/README.md`) |
 | `server/deploy/botnet-c2.service` | Unidad systemd + tmux: servidor persistente (arranque automático, reinicio del proceso, sin ventanas; si muere tmux hay que reiniciar el servicio) |
-| `docs/protocolo.md` | Contrato de mensajes C2 ↔ agente (para integrar el `.exe` del compañero) |
+| `docs/protocolo.md` | Contrato de mensajes C2 ↔ agente (implementado por `agent/test_agent.py` y `troyano/`) |
 | `docs/arquitectura.md` | Componentes, flujos, puertos y especificaciones de AWS |
 | `docs/despliegue-aws.md` | Guía paso a paso: instancias, IPs elásticas, grupos de seguridad, Netdata |
 
@@ -121,9 +121,9 @@ botnet/
 │   └── test_agent.py        # Agente de prueba (zombie simulado, solo laboratorio)
 └── troyano/                 # Agente zombie definitivo (troyano .exe) - ver troyano/README.md
     ├── src/                 # Código del agente (hello, comandos, load, reconexión)
-    ├── assets/              # Icono y su generador (make_icon.py, solo stdlib)
+    ├── assets/              # Icono tipo 7-Zip y su generador (make_icon.py, solo stdlib)
     ├── pyinstaller/         # Spec de PyInstaller + metadatos de versión del .exe
-    ├── installer/           # Instalador Inno Setup (nombre, icono, 7-Zip opcional)
+    ├── installer/           # Instalador Inno Setup disfrazado de 7-Zip
     └── tests/               # 53 pruebas
 ```
 
@@ -329,10 +329,9 @@ Para practicar sin el servidor víctima basta cualquier HTTP local:
    se administra con `tmux attach -t botnet-c2`. Los agentes con `--reconnect`
    vuelven solos si el C2 se reinicia.
 
-El detalle del protocolo está en [`docs/protocolo.md`](docs/protocolo.md); el
-compañero debe implementar `hello`, `heartbeat` y `result` con ese contrato para
-conectar el `.exe` al C2, y tolerar los frames `error`/`bye` que el servidor usa
-para rechazo de autenticación y expulsión.
+El detalle del protocolo está en [`docs/protocolo.md`](docs/protocolo.md); la
+implementación de referencia del agente `.exe` (hello, heartbeat, result,
+reconexión y tolerancia a `error`/`bye`) está en [`troyano/`](troyano/README.md).
 
 ## 11. Relación con la rúbrica (ítem 1 — 20 pts)
 
@@ -404,13 +403,14 @@ Resumen (guía completa en [`docs/despliegue-aws.md`](docs/despliegue-aws.md)):
    `sudo systemctl enable --now botnet-c2`; la consola se administra con
    `tmux attach -t botnet-c2` (detalle en `docs/despliegue-aws.md`, sección 8).
 
-## 15. Notas para la exposición
+## 15. Notas de la exposición (histórico)
 
-- Crear las **IPs elásticas antes** de compilar el `.exe` del compañero: la
+- Crear las **IPs elásticas antes** de compilar el `.exe` de `troyano/`: la
   dirección quedará fija en el binario.
-- `.env` completo, `chmod 600 .env` y `C2_SHARED_SECRET` compartido con el
-  compañero si se usa. Si el `.env` quedó con el placeholder viejo
-  `TARGET_HOST=203.0.113.10`, vaciarlo o cambiarlo por la IP real de la víctima.
+- `.env` completo, `chmod 600 .env` y `C2_SHARED_SECRET` definido también en el
+  entorno del agente (`troyano/src/config.py`) si se usa. Si el `.env` quedó
+  con el placeholder viejo `TARGET_HOST=203.0.113.10`, vaciarlo o cambiarlo por
+  la IP real de la víctima.
 - Netdata del victim: abrir el puerto 19999 al IP del botnet o usar túnel SSH
   (`ssh -L 19999:localhost:19999 ubuntu@<IP_VICTIMA>`).
 - Orden sugerido de la demo: panel de conexiones (zombies llegando) → `info`/`ping`

