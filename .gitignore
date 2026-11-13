@@ -18,6 +18,10 @@ dist/
 !troyano/pyinstaller/
 !troyano/pyinstaller/*.spec
 
+# Artefactos compilados del troyano (los .exe nunca se versionan)
+troyano/installer/output/
+troyano/installer/redist/*.exe
+
 # Secretos y credenciales
 .env
 .env.*

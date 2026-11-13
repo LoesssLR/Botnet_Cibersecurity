@@ -1,8 +1,7 @@
 # Laboratorio Botnet C2 — Administración Remota, Inundación Controlada y Métricas del Objetivo.
 
-**Integrantes**:
+**Autor**:
 - Luis Alejandro López Reyes
-- Sámiel Marín Cambronero
 
 Prototipo de **servidor de comando y control (C2) + botnet de laboratorio**: recibe
 conexiones inversas concurrentes de agentes de prueba, las administra mediante un
@@ -71,6 +70,7 @@ deja un registro JSONL de CPU, RAM y red antes/durante/después, listo para el i
 | `server/tests/` | Suite unitaria (`run_all.py`), prueba de humo de integración y 9 módulos de pruebas |
 | `agent/test_agent.py` | Agente de prueba (zombie simulado) que implementa el protocolo, el comando `load` y la reconexión automática (`--reconnect`) |
 | `troyano/` | Agente zombie definitivo (troyano `.exe`): código, icono, spec de PyInstaller, instalador Inno Setup disfrazado de 7-Zip y 53 pruebas (ver `troyano/README.md`) |
+| `GUIA_DEMO.txt` | Guía rápida de la demo: paso a paso de la exposición y notas técnicas |
 | `server/deploy/botnet-c2.service` | Unidad systemd + tmux: servidor persistente (arranque automático, reinicio del proceso, sin ventanas; si muere tmux hay que reiniciar el servicio) |
 | `docs/protocolo.md` | Contrato de mensajes C2 ↔ agente (implementado por `agent/test_agent.py` y `troyano/`) |
 | `docs/arquitectura.md` | Componentes, flujos, puertos y especificaciones de AWS |
@@ -439,3 +439,16 @@ Resumen (guía completa en [`docs/despliegue-aws.md`](docs/despliegue-aws.md)):
 - [Protocolo C2](docs/protocolo.md)
 - [Despliegue en AWS](docs/despliegue-aws.md)
 - [Troyano (agente zombie)](troyano/README.md)
+
+## 18. Aviso legal — uso académico
+
+Este repositorio es un **proyecto académico** del curso Seguridad de TI II de
+la Universidad Técnica Nacional (UTN) y se publica **únicamente con fines
+educativos**, como evidencia documentada del laboratorio realizado con
+autorización del docente.
+
+El código solo debe ejecutarse en entornos propios o expresamente autorizados
+(el laboratorio del curso). El autor **no se hace responsable del uso que
+terceros hagan de este material**: cualquier utilización fuera del ámbito
+académico autorizado es responsabilidad exclusiva de quien la realice. No se
+apoya, promueve ni facilita ningún uso malicioso de este proyecto.
