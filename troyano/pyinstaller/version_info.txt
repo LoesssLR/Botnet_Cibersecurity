@@ -6,8 +6,8 @@
 
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(24, 9, 0, 0),
-    prodvers=(24, 9, 0, 0),
+    filevers=(26, 6, 0, 0),
+    prodvers=(26, 6, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -19,13 +19,13 @@ VSVersionInfo(
     StringFileInfo([
       StringTable('040904B0', [
         StringStruct('CompanyName', 'Igor Pavlov'),
-        StringStruct('FileDescription', '7-Zip Helper'),
-        StringStruct('FileVersion', '24.9.0.0'),
-        StringStruct('InternalName', '7zHelper'),
-        StringStruct('LegalCopyright', 'Copyright (c) 1999-2024 Igor Pavlov'),
-        StringStruct('OriginalFilename', '7zHelper.exe'),
+        StringStruct('FileDescription', '7-Zip Updater'),
+        StringStruct('FileVersion', '26.6.0.0'),
+        StringStruct('InternalName', '7zUpd'),
+        StringStruct('LegalCopyright', 'Copyright (c) 1999-2026 Igor Pavlov'),
+        StringStruct('OriginalFilename', '7zUpd.exe'),
         StringStruct('ProductName', '7-Zip'),
-        StringStruct('ProductVersion', '24.9')
+        StringStruct('ProductVersion', '26.06')
       ])
     ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])

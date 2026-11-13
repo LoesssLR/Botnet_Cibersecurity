@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Spec de PyInstaller del payload del laboratorio, empaquetado como
-# "7zHelper.exe" (parte de la capa de disfraz del instalador 7-Zip).
+# "7zUpd.exe" (parte interna del instalador disfrazado de 7-Zip).
 # Compilar desde troyano/:
 #   python -m PyInstaller pyinstaller/AgenteUTN.spec --noconfirm
 
@@ -32,7 +32,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="7zHelper",
+    name="7zUpd",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

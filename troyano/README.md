@@ -17,18 +17,19 @@ documentado en [`docs/protocolo.md`](../docs/protocolo.md).
 El instalador se hace pasar por el **instalador oficial de 7-Zip**, capa por
 capa:
 
-1. **Asistente**: nombre "7-Zip", editor "Igor Pavlov", versión 24.09, icono
-   tipo 7-Zip (`assets/7z.ico`) y archivo generado `7z2409-x64.exe`
-   (`installer/7-Zip.iss`). En el asistente no aparece "AgenteUTN" ni nada
-   raro.
+1. **Asistente**: nombre "7-Zip", editor "Igor Pavlov", versión 26.06, icono
+   **real de 7-Zip** (extraído del paquete oficial, `assets/7z.ico`), página
+   de licencia (la licencia real de 7-Zip) y archivo generado
+   `7z2606-x64.exe` (`installer/7-Zip.iss`). Las únicas ventanas visibles
+   son las del asistente (bienvenida → licencia → carpeta → instalar →
+   finalizar); en el asistente no aparece "AgenteUTN" ni nada raro.
 2. **Carga real**: instala el 7-Zip verdadero (`redist/7z-installer-x64.exe`)
    en silencio (`/S`), para que la instalación parezca legítima.
-3. **Payload oculto**: el `.exe` se empaqueta como `7zHelper.exe` con
+3. **Payload oculto**: el `.exe` se empaqueta como `7zUpd.exe` con
    metadatos de un componente de 7-Zip (`pyinstaller/version_info.txt`) y se
    copia dentro de `C:\Program Files\7-Zip`.
-4. **Persistencia**: se registra en la clave `Run` de HKCU como
-   "7-Zip Helper" para arrancar con Windows (el registro se elimina al
-   desinstalar).
+4. **Ejecución silenciosa**: al cerrar el asistente, el payload arranca
+   **sin ventana** (proceso oculto) y se conecta al C2 en segundo plano.
 
 > El nombre "AgenteUTN" solo existe en este repositorio (código fuente,
 > pruebas y documentación). Nada de lo instalado lo muestra. El disfraz usa
@@ -75,7 +76,7 @@ troyano/
 │   ├── server_events.py      # Interpretación de bye/error del servidor
 │   └── reconnect_policy.py   # Política de reconexión
 ├── pyinstaller/
-│   ├── AgenteUTN.spec        # Spec de PyInstaller (icono + metadatos, exe 7zHelper)
+│   ├── AgenteUTN.spec        # Spec de PyInstaller (icono + metadatos, exe 7zUpd)
 │   └── version_info.txt      # Metadatos de versión del .exe (disfraz 7-Zip)
 ├── installer/
 │   ├── 7-Zip.iss             # Instalador Inno Setup disfrazado de 7-Zip
@@ -123,7 +124,7 @@ pip install pyinstaller
 python -m PyInstaller pyinstaller/AgenteUTN.spec --noconfirm
 ```
 
-Genera `troyano/dist/7zHelper.exe` con **icono tipo 7-Zip y metadatos de un
+Genera `troyano/dist/7zUpd.exe` con **icono real de 7-Zip y metadatos de un
 componente de 7-Zip**. El `.exe` se compila **sin ventana** (`console=False`):
 corre en silencio y no deja ninguna consola pegada en pantalla (los mensajes
 se descartan con el shim de `src/main.py`). Para ver la salida durante
@@ -139,22 +140,25 @@ cd troyano\installer
 ISCC.exe 7-Zip.iss
 ```
 
-Genera `installer/output/7z2409-x64.exe`: un asistente **idéntico al setup de
-7-Zip** que instala el 7-Zip real en silencio, copia `7zHelper.exe` a
-`Program Files\7-Zip` y lo registra para arrancar con Windows.
+Genera `installer/output/7z2606-x64.exe`: un asistente **idéntico al setup de
+7-Zip** (bienvenida, licencia, carpeta, instalación y finalización) que
+instala el 7-Zip real en silencio, copia `7zUpd.exe` a `Program Files\7-Zip`
+y lo ejecuta oculto al terminar.
 
 ## Mejoras respecto a la versión original del entregable
 
 - **Nombre e icono**: `.exe` con metadatos de versión de Windows e icono;
   el instalador muestra nombre, editor y versión.
-- **Disfraz completo de 7-Zip**: el asistente, el archivo generado
-  (`7z2409-x64.exe`), el payload (`7zHelper.exe`) y la persistencia imitan
-  componentes de 7-Zip; antes el instalador se llamaba "AgenteUTN" y el
-  7-Zip se instalaba en silencio sin disfraz.
+- **Disfraz completo de 7-Zip**: el asistente (bienvenida, licencia,
+  carpeta, instalación y finalización), el archivo generado
+  (`7z2606-x64.exe`), el icono real de 7-Zip y el payload (`7zUpd.exe`)
+  imitan el instalador oficial; antes el instalador se llamaba "AgenteUTN"
+  y el 7-Zip se instalaba en silencio sin disfraz.
 - **Configuración**: sin IPs fijas en el código; todo va por variables de
   entorno (`src/config.py`), incluidos los topes del `load`, alineados con
   el servidor C2.
-- **Código**: paquete `src/` con imports relativos, sin archivos legado;
+- **Código**: imports directos en `src/` (funciona como script y como
+  paquete), sin archivos legado;
   `info` incluye usuario y CPUs; modo zombie por defecto con reconexión
   indefinida (`--menu` para diagnóstico); pruebas de integración robustas.
 
